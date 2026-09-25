@@ -55,21 +55,13 @@ def main():
         CLIViewer.run_scheduler_daemon(controller, poll_interval_minutes=args.interval)
         return
 
-    # Check GUI capability
-    can_launch_gui = False
+    # Launch Desktop GUI unless explicitly instructed to run headless CLI
     if not args.cli:
-        try:
-            import PyQt6
-            if sys.platform.startswith("linux") and "DISPLAY" not in os.environ:
-                logger.info("No DISPLAY found in environment. Defaulting to CLI mode.")
-                can_launch_gui = False
-            else:
-                can_launch_gui = True
-        except ImportError:
-            logger.info("PyQt6 not installed in current Python environment. Defaulting to CLI mode.")
-            can_launch_gui = False
+        if sys.platform.startswith("linux") and "DISPLAY" not in os.environ:
+            from view.gui import CLIViewer
+            CLIViewer.render_dashboard(controller, all_stocks=args.all)
+            return
 
-    if can_launch_gui:
         from PyQt6.QtWidgets import QApplication
         from view.gui import NepseScreenerMainWindow
 

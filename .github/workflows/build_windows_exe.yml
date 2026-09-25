@@ -38,7 +38,7 @@ jobs:
 
       - name: Build Standalone Windows Application with PyInstaller
         run: |
-          pyinstaller --noconfirm --onedir --windowed --name "NEPSE_Algorithmic_Screener" main.py
+          pyinstaller --noconfirm --onedir --console --name "NEPSE_Algorithmic_Screener" main.py
 
       - name: Compress Release Folder to Zip
         run: |
