@@ -301,11 +301,11 @@ TRADINGVIEW_HTML_TEMPLATE = """<!DOCTYPE html>
             if (!bar) return;
             const isUp = bar.close >= bar.open;
             const clr = isUp ? "#26a69a" : "#ef5350";
-            legendInfo.innerHTML = "<strong style=\"color:#fff;\">{{SYMBOL}}</strong> | " +
-                "O: <span style=\"color:" + clr + "\">" + bar.open.toFixed(2) + "</span> " +
-                "H: <span style=\"color:" + clr + "\">" + bar.high.toFixed(2) + "</span> " +
-                "L: <span style=\"color:" + clr + "\">" + bar.low.toFixed(2) + "</span> " +
-                "C: <span style=\"color:" + clr + "\">" + bar.close.toFixed(2) + "</span>";
+            legendInfo.innerHTML = '<strong style="color:#ffffff;">{{SYMBOL}}</strong> | ' +
+                'O: <span style="color:' + clr + '">' + bar.open.toFixed(2) + '</span> ' +
+                'H: <span style="color:' + clr + '">' + bar.high.toFixed(2) + '</span> ' +
+                'L: <span style="color:' + clr + '">' + bar.low.toFixed(2) + '</span> ' +
+                'C: <span style="color:' + clr + '">' + bar.close.toFixed(2) + '</span>';
         }
         if (candleData.length > 0) updateLegend(candleData[candleData.length - 1]);
 
