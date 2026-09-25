@@ -26,7 +26,7 @@ try:
     from PyQt6.QtWebEngineWidgets import QWebEngineView
     from PyQt6.QtCore import QUrl
     WEBENGINE_AVAILABLE = True
-except ImportError:
+except Exception:
     WEBENGINE_AVAILABLE = False
 
 

@@ -82,4 +82,16 @@ def main():
         CLIViewer.render_dashboard(controller, all_stocks=args.all)
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except Exception as e:
+        import traceback
+        err_msg = traceback.format_exc()
+        with open("crash_log.txt", "w", encoding="utf-8") as f:
+            f.write(err_msg)
+        try:
+            import ctypes
+            ctypes.windll.user32.MessageBoxW(0, f"Fatal Startup Error:\n\n{err_msg}", "NEPSE Screener Error", 0x10)
+        except Exception:
+            print(err_msg)
+        sys.exit(1)
