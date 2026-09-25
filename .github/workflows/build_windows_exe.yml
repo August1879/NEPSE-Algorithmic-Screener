@@ -36,15 +36,14 @@ jobs:
             --exclude-module PyQt6.QtQuick `
             --exclude-module PyQt6.QtQml `
             --exclude-module PyQt6.QtPdf `
-            --exclude-module PyQt6.QtNetwork `
             --exclude-module PyQt6.QtBluetooth `
             main.py
 
-      - name: Publish to GitHub Releases (High-Speed CDN)
+      - name: Publish to GitHub Releases
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v1.0.0
-          name: "NEPSE Screener v1.0.0"
+          tag_name: ${{ github.ref_name || 'v1.0.0' }}
+          name: "NEPSE Algorithmic Screener ${{ github.ref_name || 'v1.0.0' }}"
           files: dist/NEPSE_Algorithmic_Screener.exe
           draft: false
           prerelease: false
