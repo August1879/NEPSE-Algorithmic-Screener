@@ -116,23 +116,6 @@ class NepseMarketScheduler(QThread):
         cycle_finished = pyqtSignal(list)
         holiday_or_closed = pyqtSignal(str)
         git_sync_completed = pyqtSignal(str)
-    else:
-        def __init__(self, controller, poll_interval_minutes=LIVE_POLL_INTERVAL_MINUTES):
-            super().__init__()
-            self.controller = controller
-            self.poll_interval_seconds = poll_interval_minutes * 60
-            self.calendar = NepseMarketCalendar()
-            self.market_scraper = FullMarketScraper(controller.db)
-            self.git_sync = GitSyncManager()
-            self._running = False
-            self._force_scrape_event = threading.Event()
-
-            self.status_updated = _MockSignal()
-            self.cycle_started = _MockSignal()
-            self.ticker_scraped = _MockSignal()
-            self.cycle_finished = _MockSignal()
-            self.holiday_or_closed = _MockSignal()
-            self.git_sync_completed = _MockSignal()
 
     def __init__(self, controller, poll_interval_minutes: int = LIVE_POLL_INTERVAL_MINUTES):
         super().__init__()
@@ -143,6 +126,14 @@ class NepseMarketScheduler(QThread):
         self.git_sync = GitSyncManager()
         self._running = False
         self._force_scrape_event = threading.Event()
+
+        if not PYQT_AVAILABLE:
+            self.status_updated = _MockSignal()
+            self.cycle_started = _MockSignal()
+            self.ticker_scraped = _MockSignal()
+            self.cycle_finished = _MockSignal()
+            self.holiday_or_closed = _MockSignal()
+            self.git_sync_completed = _MockSignal()
 
     def stop(self):
         self._running = False

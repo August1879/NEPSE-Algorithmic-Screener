@@ -562,7 +562,11 @@ class FullMarketScraper:
             db.upsert_eod_data(sym, group)
             count += 1
 
-        return count, f"Successfully synced {count} NEPSE stocks to database."
+        if hasattr(db, "insert_intraday_snapshot"):
+            now_ts = self.calendar.now_npt().strftime("%Y-%m-%d %H:%M:00")
+            db.insert_intraday_snapshot(df, timestamp_str=now_ts)
+
+        return count, f"Successfully synced {count} NEPSE stocks to database (EOD and Intraday)."
 
 
 class GitSyncManager:

@@ -7,7 +7,18 @@ import os
 import argparse
 import logging
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
+from datetime import datetime, timezone, timedelta
+
+def _npt_converter(*args):
+    npt_tz = timezone(timedelta(hours=5, minutes=45))
+    return datetime.now(npt_tz).timetuple()
+
+logging.Formatter.converter = _npt_converter
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s NPT [%(levelname)s] %(name)s: %(message)s",
+    datefmt="%Y-%m-%d %I:%M:%S %p"
+)
 logger = logging.getLogger("nepse_screener")
 
 from controller.controller import AppController
@@ -16,7 +27,8 @@ def main():
     parser = argparse.ArgumentParser(description="NEPSE Algorithmic Screener & Automated Scheduler")
     parser.add_argument("--cli", action="store_true", help="Force headless CLI mode")
     parser.add_argument("--all", action="store_true", help="Scrape and screen all NEPSE stocks (not just watchlist)")
-    parser.add_argument("--schedule", action="store_true", help="Run automated scraping scheduler daemon (10:45-14:45 NPT Mon-Fri)")
+    parser.add_argument("--schedule", action="store_true", help="Run automated scraping scheduler daemon")
+    parser.add_argument("--interval", type=int, default=1, help="Polling interval in minutes for live daemon (default: 1)")
     parser.add_argument("--add", type=str, help="Add a ticker symbol to the watchlist before running")
     parser.add_argument("--export-chart", type=str, help="Export technical chart for a specific symbol to PNG")
     args = parser.parse_args()
@@ -40,7 +52,7 @@ def main():
 
     if args.schedule:
         from view.gui import CLIViewer
-        CLIViewer.run_scheduler_daemon(controller)
+        CLIViewer.run_scheduler_daemon(controller, poll_interval_minutes=args.interval)
         return
 
     # Check GUI capability

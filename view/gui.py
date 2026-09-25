@@ -1,3 +1,5 @@
+import time
+from model.ingestion import NepseMarketCalendar
 """
 Desktop View Layer for NEPSE Algorithmic Screener.
 Built with PyQt6 (with PySide6 / CLI compatibility), featuring an interactive
@@ -489,7 +491,7 @@ class CLIViewer:
         return results
 
     @staticmethod
-    def run_scheduler_daemon(controller):
+    def run_scheduler_daemon(controller, poll_interval_minutes: int = 1):
         """Runs the automated scraping scheduler as a foreground terminal daemon."""
         print("\n" + "=" * 90)
         print("   NEPSE AUTOMATED DATA SCRAPER & SCREENER DAEMON")
@@ -498,7 +500,7 @@ class CLIViewer:
         print("=" * 90)
 
         def on_status(msg):
-            print(f"[{NepseCalendar.now_npt().strftime('%I:%M:%S %p NPT')}] {msg}")
+            print(f"[{NepseMarketCalendar.now_npt().strftime('%I:%M:%S %p NPT')}] {msg}")
 
         def on_ticker(sym, res):
             if res.get("is_entry_signal"):
@@ -506,16 +508,17 @@ class CLIViewer:
 
         def on_cycle_finished(results):
             triggered = [r for r in results if r.get("is_entry_signal")]
-            print(f"[{NepseCalendar.now_npt().strftime('%I:%M:%S %p NPT')}] Cycle complete: {len(results)} stocks scraped, {len(triggered)} entry signals detected.")
+            print(f"[{NepseMarketCalendar.now_npt().strftime('%I:%M:%S %p NPT')}] Cycle complete: {len(results)} stocks scraped, {len(triggered)} entry signals detected.")
 
         def on_holiday(msg):
-            print(f"[{NepseCalendar.now_npt().strftime('%I:%M:%S %p NPT')}] [Market Inactive] {msg}")
+            print(f"[{NepseMarketCalendar.now_npt().strftime('%I:%M:%S %p NPT')}] [Market Inactive] {msg}")
 
         scheduler = controller.start_automated_scheduler(
             on_status=on_status,
             on_ticker=on_ticker,
             on_cycle_finished=on_cycle_finished,
-            on_holiday=on_holiday
+            on_holiday=on_holiday,
+            poll_interval_minutes=poll_interval_minutes
         )
 
         try:

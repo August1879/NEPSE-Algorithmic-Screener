@@ -101,13 +101,14 @@ class AppController:
         on_status: Optional[callable] = None,
         on_ticker: Optional[callable] = None,
         on_cycle_finished: Optional[callable] = None,
-        on_holiday: Optional[callable] = None
+        on_holiday: Optional[callable] = None,
+        poll_interval_minutes: int = 1
     ) -> NepseMarketScheduler:
         if self.scheduler and self.scheduler.isRunning():
             logger.info("Scheduler already active.")
             return self.scheduler
 
-        self.scheduler = NepseMarketScheduler(self)
+        self.scheduler = NepseMarketScheduler(self, poll_interval_minutes=poll_interval_minutes)
 
         if on_status:
             self.scheduler.status_updated.connect(on_status)

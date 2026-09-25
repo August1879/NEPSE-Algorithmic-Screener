@@ -76,6 +76,21 @@ class DatabaseManager:
                 );
             """)
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_eod_symbol_date ON eod_prices(symbol, date);")
+            # 1-minute intraday ticks
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS intraday_prices (
+                    symbol TEXT NOT NULL,
+                    timestamp TEXT NOT NULL,
+                    ltp REAL NOT NULL,
+                    open REAL,
+                    high REAL,
+                    low REAL,
+                    volume REAL,
+                    turnover REAL,
+                    PRIMARY KEY (symbol, timestamp)
+                );
+            """)
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_intraday_symbol_time ON intraday_prices(symbol, timestamp);")
 
             # Screener signals log
             cursor.execute("""
@@ -249,3 +264,53 @@ class DatabaseManager:
                 ORDER BY s.is_entry_signal DESC, s.symbol ASC
             """
             return pd.read_sql_query(query, conn)
+
+    def insert_intraday_snapshot(self, df: pd.DataFrame, timestamp_str: Optional[str] = None):
+        """Stores a minute-by-minute tick snapshot for all stocks."""
+        if df.empty or "symbol" not in df.columns:
+            return
+
+        from datetime import datetime, timezone, timedelta
+        npt_tz = timezone(timedelta(hours=5, minutes=45))
+        ts = timestamp_str or datetime.now(npt_tz).strftime("%Y-%m-%d %H:%M:00")
+
+        def _safe_float(val, fallback=0.0):
+            if val is None or pd.isna(val):
+                return float(fallback)
+            try:
+                f = float(val)
+                return float(fallback) if np.isnan(f) else f
+            except (ValueError, TypeError):
+                return float(fallback)
+
+        records = []
+        for _, row in df.iterrows():
+            sym = str(row.get("symbol", "")).upper().strip()
+            if not sym:
+                continue
+            c = _safe_float(row.get("close"), 0.0)
+            o = _safe_float(row.get("open"), c)
+            h = _safe_float(row.get("high"), max(o, c))
+            l = _safe_float(row.get("low"), min(o, c))
+            v = _safe_float(row.get("volume"), 0.0)
+            t = _safe_float(row.get("turnover"), round(c * v, 2))
+
+            records.append((sym, ts, c, o, h, l, v, t))
+
+        if not records:
+            return
+
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.executemany("""
+                INSERT INTO intraday_prices (symbol, timestamp, ltp, open, high, low, volume, turnover)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(symbol, timestamp) DO UPDATE SET
+                    ltp=excluded.ltp,
+                    open=excluded.open,
+                    high=excluded.high,
+                    low=excluded.low,
+                    volume=excluded.volume,
+                    turnover=excluded.turnover
+            """, records)
+            conn.commit()

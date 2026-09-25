@@ -3,6 +3,5 @@ __pycache__/
 *$py.class
 .venv/
 venv/
-data/*.db
-output/
+data/test_*.db
 .DS_Store
