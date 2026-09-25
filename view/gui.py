@@ -472,6 +472,49 @@ class NepseScreenerMainWindow(QMainWindow):
             on_error=on_error
         )
 
+    def _handle_cloud_sync(self):
+        self.log_box.append("Connecting to GitHub to download latest market database...")
+        self.status_bar.showMessage("Syncing from GitHub...")
+        success, msg = self.controller.sync_from_cloud()
+        if success:
+            self.log_box.append(f"[Cloud Sync] {msg}")
+            self.status_bar.showMessage("GitHub sync complete.", 5000)
+            self._populate_table_from_cache()
+        else:
+            self.log_box.append(f"[Cloud Sync Info] {msg}")
+            self.status_bar.showMessage("Local database active.", 5000)
+
+    def _handle_open_tradingview(self):
+        sym = self.selected_symbol or "NABIL"
+        df = self.controller.get_historical_data(sym)
+        if df.empty:
+            self.status_bar.showMessage(f"No historical data available for {sym}", 4000)
+            return
+        from .chart_canvas import open_tradingview_chart
+        out_file = open_tradingview_chart(sym, df)
+        self.log_box.append(f"[TradingView] Opened interactive chart for {sym} ({out_file.name})")
+        self.status_bar.showMessage(f"Launched TradingView chart for {sym} in browser.", 5000)
+
+    def _handle_chart_mode_change(self, mode: str):
+        if self.selected_symbol:
+            self._render_current_chart(self.selected_symbol)
+
+    def _render_current_chart(self, symbol: str):
+        df = self.controller.get_historical_data(symbol)
+        if df.empty:
+            return
+
+        mode = self.chart_mode_combo.currentText()
+        if "TradingView" in mode and getattr(self, "web_view", None) is not None:
+            from .chart_canvas import export_tradingview_html
+            out_file = export_tradingview_html(symbol, df)
+            self.web_view.setUrl(QUrl.fromLocalFile(str(out_file.resolve())))
+            self.chart_stack.setCurrentIndex(0)
+        else:
+            self.canvas.plot_stock(symbol, df)
+            idx = 1 if getattr(self, "web_view", None) is not None else 0
+            self.chart_stack.setCurrentIndex(idx)
+
 
 class CLIViewer:
     """Console / Terminal viewer used for headless environments and daemon modes."""
@@ -567,35 +610,3 @@ class CLIViewer:
             print("\nStopping scheduler daemon...")
             controller.stop_automated_scheduler()
             print("Daemon stopped.")
-
-    def _handle_cloud_sync(self):
-        self.log_box.append("Connecting to GitHub to download latest market database...")
-        self.status_bar.showMessage("Syncing from GitHub...")
-        success, msg = self.controller.sync_from_cloud()
-        if success:
-            self.log_box.append(f"[Cloud Sync] {msg}")
-            self.status_bar.showMessage("GitHub sync complete.", 5000)
-            self._load_table_data()
-        else:
-            self.log_box.append(f"[Cloud Sync Info] {msg}")
-            self.status_bar.showMessage("Local database active.", 5000)
-
-    def _handle_chart_mode_change(self, mode: str):
-        if self.selected_symbol:
-            self._render_current_chart(self.selected_symbol)
-
-    def _render_current_chart(self, symbol: str):
-        df = self.controller.get_historical_data(symbol)
-        if df.empty:
-            return
-
-        mode = self.chart_mode_combo.currentText()
-        if "TradingView" in mode and getattr(self, "web_view", None) is not None:
-            from .chart_canvas import export_tradingview_html
-            out_file = export_tradingview_html(symbol, df)
-            self.web_view.setUrl(QUrl.fromLocalFile(str(out_file.resolve())))
-            self.chart_stack.setCurrentIndex(0)
-        else:
-            self._render_current_chart(symbol)
-            idx = 1 if getattr(self, "web_view", None) is not None else 0
-            self.chart_stack.setCurrentIndex(idx)
