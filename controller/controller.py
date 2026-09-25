@@ -135,3 +135,12 @@ class AppController:
 
     def get_latest_signals_df(self) -> pd.DataFrame:
         return self.db.get_latest_signals()
+
+    def sync_from_cloud(self) -> Tuple[bool, str]:
+        """Pulls latest market database from GitHub repository."""
+        from config import GITHUB_RAW_DB_URL, DB_PATH
+        from model.ingestion import sync_database_from_github
+        success, msg = sync_database_from_github(GITHUB_RAW_DB_URL, DB_PATH)
+        if success:
+            self.db._init_db()
+        return success, msg

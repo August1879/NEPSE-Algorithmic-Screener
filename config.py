@@ -65,3 +65,7 @@ WINDOW_WIDTH = 1450
 WINDOW_HEIGHT = 880
 SIGNAL_HIGHLIGHT_COLOR = "#d4edda"
 SIGNAL_TEXT_COLOR = "#155724"
+
+# Cloud Sync Configuration (GitHub Raw Database URL)
+GITHUB_RAW_DB_URL = "https://raw.githubusercontent.com/August1879/NEPSE-Algorithmic-Screener/main/data/nepse_cache.db"
+AUTO_SYNC_GITHUB_ON_STARTUP = True

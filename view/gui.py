@@ -53,6 +53,7 @@ class NepseScreenerMainWindow(QMainWindow):
         self.clock_timer = QTimer(self)
         self.clock_timer.timeout.connect(self._update_market_clock_display)
         self.clock_timer.start(1000)
+        QTimer.singleShot(600, self._handle_cloud_sync)
 
     def _init_ui(self):
         self.setWindowTitle(APP_TITLE)
@@ -133,6 +134,10 @@ class NepseScreenerMainWindow(QMainWindow):
 
         # Automated Scheduler Controls Banner
         sched_banner = QHBoxLayout()
+        self.cloud_sync_btn = QPushButton("☁ Sync Cloud (GitHub)")
+        self.cloud_sync_btn.setStyleSheet("background-color: #5c6bc0; color: white; font-weight: bold;")
+        self.cloud_sync_btn.clicked.connect(self._handle_cloud_sync)
+
         self.auto_sched_btn = QPushButton("▶ Enable Auto-Scraping (10:45-2:45 NPT)")
         self.auto_sched_btn.setStyleSheet("background-color: #00796b; color: white;")
         self.auto_sched_btn.clicked.connect(self._toggle_auto_scheduler)
@@ -141,6 +146,7 @@ class NepseScreenerMainWindow(QMainWindow):
         self.sync_all_btn.setStyleSheet("background-color: #455a64; color: white;")
         self.sync_all_btn.clicked.connect(self._handle_sync_all)
 
+        sched_banner.addWidget(self.cloud_sync_btn)
         sched_banner.addWidget(self.auto_sched_btn)
         sched_banner.addWidget(self.sync_all_btn)
         left_layout.addLayout(sched_banner)
@@ -528,3 +534,15 @@ class CLIViewer:
             print("\nStopping scheduler daemon...")
             controller.stop_automated_scheduler()
             print("Daemon stopped.")
+
+    def _handle_cloud_sync(self):
+        self.log_box.append("Connecting to GitHub to download latest market database...")
+        self.status_bar.showMessage("Syncing from GitHub...")
+        success, msg = self.controller.sync_from_cloud()
+        if success:
+            self.log_box.append(f"[Cloud Sync] {msg}")
+            self.status_bar.showMessage("GitHub sync complete.", 5000)
+            self._load_table_data()
+        else:
+            self.log_box.append(f"[Cloud Sync Info] {msg}")
+            self.status_bar.showMessage("Local database active.", 5000)

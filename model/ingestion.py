@@ -638,3 +638,25 @@ class GitSyncManager:
         except Exception as e:
             logger.warning(f"Git sync operation failed: {e}")
             return False, f"Git sync error: {str(e)}"
+
+def sync_database_from_github(url: str, target_path: Path) -> Tuple[bool, str]:
+    """Downloads latest SQLite database directly from GitHub repository."""
+    import urllib.request
+    try:
+        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+        with urllib.request.urlopen(req, timeout=12) as response:
+            if response.status == 200:
+                content = response.read()
+                if len(content) > 100 and content.startswith(b"SQLite format 3"):
+                    target_path.parent.mkdir(parents=True, exist_ok=True)
+                    tmp = target_path.with_suffix(".tmp")
+                    with open(tmp, "wb") as f:
+                        f.write(content)
+                    tmp.replace(target_path)
+                    mb_size = len(content) / (1024 * 1024)
+                    return True, f"Successfully synced latest database from GitHub ({mb_size:.2f} MB)."
+                else:
+                    return False, "Downloaded content is not a valid SQLite database."
+            return False, f"GitHub returned HTTP {response.status}"
+    except Exception as e:
+        return False, f"Could not sync from GitHub ({e}). Using local database."
