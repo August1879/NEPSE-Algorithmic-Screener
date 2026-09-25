@@ -36,15 +36,19 @@ jobs:
           pip install -r requirements.txt
           pip install pyinstaller PyQt6 PyQt6-WebEngine
 
-      - name: Build Standalone Windows .exe with PyInstaller
+      - name: Build Standalone Windows Application with PyInstaller
         run: |
-          pyinstaller --noconfirm --onefile --windowed --name "NEPSE_Algorithmic_Screener" main.py
+          pyinstaller --noconfirm --onedir --windowed --name "NEPSE_Algorithmic_Screener" main.py
+
+      - name: Compress Release Folder to Zip
+        run: |
+          Compress-Archive -Path dist/NEPSE_Algorithmic_Screener -DestinationPath dist/NEPSE_Algorithmic_Screener_Windows.zip
 
       - name: Publish to GitHub Releases
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.ref_name || 'latest' }}
           name: "NEPSE Screener ${{ github.ref_name || '(Latest Build)' }}"
-          files: dist/NEPSE_Algorithmic_Screener.exe
+          files: dist/NEPSE_Algorithmic_Screener_Windows.zip
           draft: false
           prerelease: false
