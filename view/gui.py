@@ -506,14 +506,18 @@ class NepseScreenerMainWindow(QMainWindow):
 
         mode = self.chart_mode_combo.currentText()
         if "TradingView" in mode and getattr(self, "web_view", None) is not None:
-            from .chart_canvas import export_tradingview_html
-            out_file = export_tradingview_html(symbol, df)
-            self.web_view.setUrl(QUrl.fromLocalFile(str(out_file.resolve())))
-            self.chart_stack.setCurrentIndex(0)
-        else:
-            self.canvas.plot_stock(symbol, df)
-            idx = 1 if getattr(self, "web_view", None) is not None else 0
-            self.chart_stack.setCurrentIndex(idx)
+            try:
+                from .chart_canvas import export_tradingview_html
+                out_file = export_tradingview_html(symbol, df)
+                self.web_view.setUrl(QUrl.fromLocalFile(str(out_file.resolve())))
+                self.chart_stack.setCurrentIndex(0)
+                return
+            except Exception as e:
+                logger.warning(f"TradingView load error: {e}. Falling back to Matplotlib.")
+
+        self.canvas.plot_stock(symbol, df)
+        idx = 1 if getattr(self, "web_view", None) is not None else 0
+        self.chart_stack.setCurrentIndex(idx)
 
 
 class CLIViewer:
