@@ -22,11 +22,19 @@ from .chart_canvas import ChartCanvas
 
 logger = logging.getLogger(__name__)
 
+try:
+    from PyQt6.QtWebEngineWidgets import QWebEngineView
+    from PyQt6.QtCore import QUrl
+    WEBENGINE_AVAILABLE = True
+except ImportError:
+    WEBENGINE_AVAILABLE = False
+
+
 # Check PyQt6 / PySide6 availability
 try:
     from PyQt6.QtWidgets import (
         QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
-        QSplitter, QTableWidget, QTableWidgetItem, QLabel, QPushButton,
+        QSplitter, QTableWidget, QTableWidgetItem, QLabel, QPushButton, QStackedWidget,
         QLineEdit, QHeaderView, QProgressBar, QTextEdit, QStatusBar, QComboBox
     )
     from PyQt6.QtCore import Qt, QTimer
@@ -199,13 +207,38 @@ class NepseScreenerMainWindow(QMainWindow):
         self.log_box.setMaximumHeight(140)
         left_layout.addWidget(self.log_box)
 
-        # === RIGHT PANEL: MATPLOTLIB CHART ===
+        # === RIGHT PANEL: EMBEDDED TRADINGVIEW & MATPLOTLIB CHARTS ===
         right_widget = QWidget()
         right_layout = QVBoxLayout(right_widget)
-        right_layout.setContentsMargins(10, 10, 10, 10)
+        right_layout.setContentsMargins(8, 8, 8, 8)
+
+        chart_header = QHBoxLayout()
+        self.chart_title_label = QLabel("Technical Analysis & Signal Verification")
+        self.chart_title_label.setStyleSheet("font-size: 13px; font-weight: bold; color: #ffffff;")
+        chart_header.addWidget(self.chart_title_label)
+        chart_header.addStretch()
+
+        self.chart_mode_combo = QComboBox()
+        if WEBENGINE_AVAILABLE:
+            self.chart_mode_combo.addItems(["TradingView (Interactive)", "Classic (Matplotlib)"])
+        else:
+            self.chart_mode_combo.addItems(["Classic (Matplotlib)"])
+        self.chart_mode_combo.currentTextChanged.connect(self._handle_chart_mode_change)
+
+        chart_header.addWidget(QLabel("Engine:"))
+        chart_header.addWidget(self.chart_mode_combo)
+        right_layout.addLayout(chart_header)
+
+        self.chart_stack = QStackedWidget()
+
+        if WEBENGINE_AVAILABLE:
+            self.web_view = QWebEngineView()
+            self.chart_stack.addWidget(self.web_view)
 
         self.canvas = ChartCanvas(self, width=8, height=7)
-        right_layout.addWidget(self.canvas)
+        self.chart_stack.addWidget(self.canvas)
+
+        right_layout.addWidget(self.chart_stack)
 
         # Add both panels to splitter
         splitter.addWidget(left_widget)
@@ -376,7 +409,7 @@ class NepseScreenerMainWindow(QMainWindow):
         self.selected_symbol = symbol
 
         df = self.controller.get_historical_data(symbol)
-        self.canvas.plot_stock(symbol, df)
+        self._render_current_chart(symbol)
         self.status_bar.showMessage(f"Loaded {symbol} chart.")
 
     def _handle_add_ticker(self):
@@ -425,7 +458,7 @@ class NepseScreenerMainWindow(QMainWindow):
             self.log_box.append("=== Screening Finished ===")
             if self.selected_symbol:
                 df = self.controller.get_historical_data(self.selected_symbol)
-                self.canvas.plot_stock(self.selected_symbol, df)
+                self._render_current_chart(self.selected_symbol)
 
         def on_error(err_msg: str):
             self.log_box.append(f"ERROR: {err_msg}")
@@ -546,3 +579,23 @@ class CLIViewer:
         else:
             self.log_box.append(f"[Cloud Sync Info] {msg}")
             self.status_bar.showMessage("Local database active.", 5000)
+
+    def _handle_chart_mode_change(self, mode: str):
+        if self.selected_symbol:
+            self._render_current_chart(self.selected_symbol)
+
+    def _render_current_chart(self, symbol: str):
+        df = self.controller.get_historical_data(symbol)
+        if df.empty:
+            return
+
+        mode = self.chart_mode_combo.currentText()
+        if "TradingView" in mode and getattr(self, "web_view", None) is not None:
+            from .chart_canvas import export_tradingview_html
+            out_file = export_tradingview_html(symbol, df)
+            self.web_view.setUrl(QUrl.fromLocalFile(str(out_file.resolve())))
+            self.chart_stack.setCurrentIndex(0)
+        else:
+            self._render_current_chart(symbol)
+            idx = 1 if getattr(self, "web_view", None) is not None else 0
+            self.chart_stack.setCurrentIndex(idx)
