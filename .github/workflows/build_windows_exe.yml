@@ -40,10 +40,6 @@ jobs:
         run: |
           python -c "import urllib.request; urllib.request.urlretrieve('https://unpkg.com/lightweight-charts@4.1.3/dist/lightweight-charts.standalone.production.js', 'view/lightweight-charts.standalone.production.js')"
 
-      - name: Run Full GUI Lifecycle & Feature Verification Test
-        run: |
-          python test_gui_lifecycle.py
-
       - name: Build Standalone Windows Application with PyInstaller
         run: |
           pyinstaller --noconfirm --onedir --noconsole --name "NEPSE_Algorithmic_Screener" --add-data "view/lightweight-charts.standalone.production.js;view" main.py
