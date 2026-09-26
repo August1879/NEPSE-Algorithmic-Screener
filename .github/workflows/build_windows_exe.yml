@@ -44,6 +44,10 @@ jobs:
         run: |
           pyinstaller --noconfirm --onedir --noconsole --name "NEPSE_Algorithmic_Screener" --add-data "view/lightweight-charts.standalone.production.js;view" main.py
 
+            - name: Automated Smoke-Test on Windows Runner
+        run: |
+          & "dist\NEPSE_Algorithmic_Screener\NEPSE_Algorithmic_Screener.exe" --cli
+
       - name: Compress Release Folder to Zip
         run: |
           Compress-Archive -Path dist/NEPSE_Algorithmic_Screener -DestinationPath dist/NEPSE_Algorithmic_Screener_Windows.zip
