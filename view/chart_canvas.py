@@ -3,6 +3,10 @@ Matplotlib Chart Canvas.
 Renders candlestick charts, moving averages, RSI subplots, and volume standard deviation bands.
 Compatible with PyQt6 / PySide6 FigureCanvasQTAgg and headless export.
 """
+import sys
+import json
+import webbrowser
+from pathlib import Path
 import logging
 from typing import Optional
 import numpy as np

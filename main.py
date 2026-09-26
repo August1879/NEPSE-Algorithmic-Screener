@@ -81,6 +81,10 @@ def main():
         return
 
     # --- INSTANT DESKTOP LAUNCH (< 0.2s) WITH GAME-STYLE LOADING SCREEN ---
+    try:
+        from PyQt6 import QtWebEngineWidgets
+    except ImportError:
+        pass
     from PyQt6.QtWidgets import QApplication
     from view.loading_screen import GameLoadingWindow
 

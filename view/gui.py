@@ -542,12 +542,13 @@ class NepseScreenerMainWindow(QMainWindow):
 
                 from .chart_canvas import export_tradingview_html
                 out_file = export_tradingview_html(symbol, df)
-                html_content = out_file.read_text(encoding="utf-8")
-                self.web_view.setHtml(html_content, QUrl("https://unpkg.com/"))
+                self.web_view.setUrl(QUrl.fromLocalFile(str(out_file.resolve())))
                 self.chart_stack.setCurrentWidget(self.web_view)
                 return
             except Exception as e:
-                logger.warning(f"TradingView failed: {e}. Falling back to Matplotlib.")
+                err_msg = f"[TradingView Note] {e}. Falling back to Matplotlib."
+                logger.warning(err_msg)
+                self.log_box.append(err_msg)
 
         self.canvas.plot_stock(symbol, df)
         self.chart_stack.setCurrentWidget(self.canvas)

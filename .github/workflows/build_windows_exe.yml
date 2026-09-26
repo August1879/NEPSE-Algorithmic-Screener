@@ -42,7 +42,7 @@ jobs:
 
       - name: Build Standalone Windows Application with PyInstaller
         run: |
-          pyinstaller --noconfirm --onedir --noconsole --name "NEPSE_Algorithmic_Screener" --add-data "view/lightweight-charts.standalone.production.js;view" main.py
+          pyinstaller --noconfirm --onedir --noconsole --name "NEPSE_Algorithmic_Screener" --collect-all PyQt6.QtWebEngineWidgets --collect-all PyQt6.QtWebEngineCore --add-data "view/lightweight-charts.standalone.production.js;view" main.py
 
       - name: Automated Smoke-Test on Windows Runner
         shell: powershell
