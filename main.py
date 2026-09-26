@@ -4,6 +4,8 @@ Supports PyQt6 GUI dashboard, automated market daemon, and headless CLI modes.
 """
 import sys
 import os
+os.environ["QTWEBENGINE_CHROMIUM_FLAGS"] = "--disable-web-security --allow-file-access-from-files"
+
 import argparse
 import logging
 
@@ -25,9 +27,6 @@ from controller.controller import AppController
 
 def main():
     # Unblock Chromium web security for local-to-remote CDN scripts
-    os.environ["QTWEBENGINE_CHROMIUM_FLAGS"] = "--disable-web-security --allow-file-access-from-files"
-    if "--disable-web-security" not in sys.argv:
-        sys.argv.extend(["--disable-web-security", "--allow-file-access-from-files"])
     parser = argparse.ArgumentParser(description="NEPSE Algorithmic Screener & Automated Scheduler")
     parser.add_argument("--cli", action="store_true", help="Force headless CLI mode")
     parser.add_argument("--all", action="store_true", help="Scrape and screen all NEPSE stocks (not just watchlist)")
@@ -35,7 +34,7 @@ def main():
     parser.add_argument("--interval", type=int, default=1, help="Polling interval in minutes for live daemon (default: 1)")
     parser.add_argument("--add", type=str, help="Add a ticker symbol to the watchlist before running")
     parser.add_argument("--export-chart", type=str, help="Export technical chart for a specific symbol to PNG")
-    args = parser.parse_args()
+    args, _ = parser.parse_known_args()
 
     controller = AppController()
 
