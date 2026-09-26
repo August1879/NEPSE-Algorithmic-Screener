@@ -57,7 +57,7 @@ jobs:
                   exit 1
               }
           } else {
-              Write-Output "✓ Executable successfully launched GUI and is running cleanly!"
+              Write-Output "SUCCESS: Executable successfully launched GUI and is running cleanly!"
               Stop-Process -Id $proc.Id -Force
           }
 
