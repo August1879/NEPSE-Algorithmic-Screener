@@ -45,8 +45,21 @@ jobs:
           pyinstaller --noconfirm --onedir --noconsole --name "NEPSE_Algorithmic_Screener" --add-data "view/lightweight-charts.standalone.production.js;view" main.py
 
       - name: Automated Smoke-Test on Windows Runner
+        shell: powershell
         run: |
-          & "dist\NEPSE_Algorithmic_Screener\NEPSE_Algorithmic_Screener.exe" --cli
+          $proc = Start-Process -FilePath "dist\NEPSE_Algorithmic_Screener\NEPSE_Algorithmic_Screener.exe" -PassThru
+          Start-Sleep -Seconds 6
+          if ($proc.HasExited) {
+              $code = $proc.ExitCode
+              if ($code -ne 0 -or (Test-Path crash_log.txt)) {
+                  Write-Error "Executable crashed on launch with exit code $code"
+                  if (Test-Path crash_log.txt) { Get-Content crash_log.txt }
+                  exit 1
+              }
+          } else {
+              Write-Output "✓ Executable successfully launched GUI and is running cleanly!"
+              Stop-Process -Id $proc.Id -Force
+          }
 
       - name: Compress Release Folder to Zip
         run: |

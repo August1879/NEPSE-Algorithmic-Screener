@@ -183,15 +183,16 @@ class GameLoadingWindow(QWidget):
         tip_layout.setContentsMargins(22, 16, 22, 18)
         tip_layout.setSpacing(8)
 
-        self.tip_category_label = QLabel("TRADING PROTOCOL & PSYCHOLOGY")
+        init_cat, init_title, init_body = TRADING_TIPS[0]
+        self.tip_category_label = QLabel(f"TRADING PROTOCOL & PSYCHOLOGY // {init_cat}")
         self.tip_category_label.setStyleSheet("color: #ffb74d; font-size: 10px; font-weight: bold; letter-spacing: 1.5px;")
         tip_layout.addWidget(self.tip_category_label)
 
-        self.tip_title_label = QLabel("The 2% Golden Rule")
+        self.tip_title_label = QLabel(init_title)
         self.tip_title_label.setStyleSheet("color: #ffffff; font-size: 15px; font-weight: bold;")
         tip_layout.addWidget(self.tip_title_label)
 
-        self.tip_body_label = QLabel(TRADING_TIPS[0])
+        self.tip_body_label = QLabel(init_body)
         self.tip_body_label.setWordWrap(True)
         self.tip_body_label.setStyleSheet("color: #c9d1d9; font-size: 12px; line-height: 1.5;")
         tip_layout.addWidget(self.tip_body_label)
