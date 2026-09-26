@@ -383,6 +383,26 @@ def export_tradingview_html(symbol: str, df: pd.DataFrame, output_dir: Path = Pa
         .replace("{{RMS_LOWER_DATA}}", json.dumps(rms_low))
     )
 
+    local_candidates = [
+        Path(getattr(sys, "_MEIPASS", "")) / "view" / "lightweight-charts.standalone.production.js",
+        Path(__file__).resolve().parent / "lightweight-charts.standalone.production.js",
+        Path("view") / "lightweight-charts.standalone.production.js",
+        Path("output") / "lightweight-charts.standalone.production.js",
+        Path("_internal") / "view" / "lightweight-charts.standalone.production.js"
+    ]
+    for cand in local_candidates:
+        if cand.exists():
+            try:
+                js_content = cand.read_text(encoding="utf-8")
+                if len(js_content) > 1000:
+                    html = html.replace(
+                        '<script src="https://unpkg.com/lightweight-charts@4.1.3/dist/lightweight-charts.standalone.production.js"></script>',
+                        f"<script>{js_content}</script>"
+                    )
+                    break
+            except Exception:
+                pass
+
     out_file = output_dir / f"{sym.lower()}_tradingview.html"
     out_file.write_text(html, encoding="utf-8")
     return out_file
