@@ -17,7 +17,6 @@ def run_test():
     print("  NEPSE SCREENER: FULL GUI LIFECYCLE & FEATURE TEST")
     print("=" * 70)
 
-    # Check PyQt6 availability
     try:
         from PyQt6.QtWidgets import QApplication
         from PyQt6.QtCore import Qt, QTimer
@@ -27,7 +26,6 @@ def run_test():
         _test_backend_pipeline()
         return
 
-    # Initialize headless offscreen Qt application
     app = QApplication.instance()
     if not app:
         app = QApplication(["nepse_test", "-platform", "offscreen"])
@@ -38,11 +36,20 @@ def run_test():
 
     print("\n[Step 1/5] Simulating GameLoadingWindow startup & background worker...")
     loader = GameLoadingWindow()
-    timeout = 10.0
+    
+    # Wait for the background worker AND the queued main_window hand-off
+    timeout = 15.0
     start = time.time()
-    while loader.worker.isRunning() and (time.time() - start) < timeout:
+    while (loader.main_window is None or (loader.worker and loader.worker.isRunning())) and (time.time() - start) < timeout:
         app.processEvents()
         time.sleep(0.05)
+
+    for _ in range(10):
+        app.processEvents()
+        time.sleep(0.02)
+
+    if getattr(loader, "error_trace", None):
+        assert False, f"InitializationWorker error: {loader.error_trace}"
 
     assert not loader.worker.isRunning(), "InitializationWorker timed out!"
     print("[PASS] Background initialization worker completed successfully.")
@@ -67,7 +74,6 @@ def run_test():
     assert main_window.selected_symbol is not None, "No stock was selected automatically!"
     print(f"-> Active selected stock: {main_window.selected_symbol}")
     
-    # Verify Matplotlib figure has plotted technical subplots
     axes = main_window.canvas.figure.axes
     assert len(axes) >= 3, f"Expected at least 3 chart subplots (Price, Volume, RSI), got {len(axes)}"
     has_plot_data = len(axes[0].lines) > 0 or len(axes[0].collections) > 0
@@ -75,19 +81,16 @@ def run_test():
     print(f"[PASS] Matplotlib chart successfully rendered price, SMAs, Bollinger Bands, Volume, and RSI for {main_window.selected_symbol}.")
 
     print("\n[Step 5/5] Testing '> Open in Browser' & Engine Switching...")
-    # Test open in browser
     main_window._handle_open_tradingview()
     out_html = Path("output") / f"{main_window.selected_symbol.lower()}_tradingview.html"
     assert out_html.exists(), f"TradingView HTML file was not generated: {out_html}"
     assert out_html.stat().st_size > 500, f"Generated HTML file is too small: {out_html.stat().st_size} bytes"
     print(f"[PASS] '> Open in Browser' successfully generated interactive TradingView HTML ({out_html.stat().st_size} bytes).")
 
-    # Test switching to TradingView
     main_window.chart_mode_combo.setCurrentText("TradingView (Interactive)")
     app.processEvents()
     print("[PASS] Switched chart engine to 'TradingView (Interactive)' without exceptions.")
 
-    # Test switching back to Classic (Matplotlib)
     main_window.chart_mode_combo.setCurrentText("Classic (Matplotlib)")
     app.processEvents()
     print("[PASS] Switched chart engine to 'Classic (Matplotlib)' without exceptions.")
