@@ -1,17 +1,17 @@
-"""
-Game-style Loading Screen for NEPSE Algorithmic Screener.
-Opens instantaneously (< 0.2s) upon launch, showing a dynamic progress bar,
-system initialization stages, and a rotating slideshow of trading tips and market wisdom
-while heavy dependencies and models load asynchronously in the background.
-"""
 import sys
 import time
 from typing import Optional, List, Tuple
-from PyQt6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QProgressBar,
-    QFrame, QApplication
-)
-from PyQt6.QtCore import Qt, QThread, pyqtSignal, QTimer
+
+try:
+    from PyQt6.QtWidgets import (
+        QWidget, QVBoxLayout, QHBoxLayout, QLabel, QProgressBar,
+        QFrame, QApplication
+    )
+    from PyQt6.QtCore import Qt, QThread, pyqtSignal, QTimer
+except (ImportError, OSError):
+    QWidget = object
+    QThread = object
+    def pyqtSignal(*args, **kwargs): return None
 
 TRADING_TIPS: List[Tuple[str, str, str]] = [
     (
@@ -67,31 +67,23 @@ class InitializationWorker(QThread):
 
     def run(self):
         try:
-            self.progress_signal.emit(10, "Mounting SQLite database cache...")
-            time.sleep(0.12)
-
-            self.progress_signal.emit(25, "Loading technical calculation libraries...")
+            self.progress_signal.emit(15, "Mounting SQLite database cache...")
+            time.sleep(0.1)
+            self.progress_signal.emit(35, "Loading technical calculation libraries...")
             from controller.controller import AppController
-            from view.gui import NepseScreenerMainWindow
-            time.sleep(0.15)
-
-            self.progress_signal.emit(50, "Calibrating NEPSE trading calendar (NPT)...")
+            time.sleep(0.1)
+            self.progress_signal.emit(60, "Calibrating NEPSE trading calendar (NPT)...")
             controller = AppController()
             if self.cli_args and getattr(self.cli_args, "add", None):
                 controller.add_ticker_to_watchlist(self.cli_args.add)
-            time.sleep(0.15)
-
-            self.progress_signal.emit(75, "Validating core watchlist & technical indicators...")
-            time.sleep(0.12)
-
-            self.progress_signal.emit(90, "Assembling dark-mode desktop dashboard...")
-            window = NepseScreenerMainWindow(controller)
-            time.sleep(0.12)
-
-            self.progress_signal.emit(100, "System ready. Welcome to NEPSE Screener.")
             time.sleep(0.1)
-
-            self.finished_signal.emit(window)
+            self.progress_signal.emit(85, "Validating core watchlist & technical indicators...")
+            for sym in controller.get_watchlist():
+                controller.get_historical_data(sym)
+            time.sleep(0.1)
+            self.progress_signal.emit(100, "System ready. Launching dashboard...")
+            time.sleep(0.1)
+            self.finished_signal.emit(controller)
         except Exception as e:
             import traceback
             self.error_signal.emit(traceback.format_exc())
@@ -101,7 +93,7 @@ class GameLoadingWindow(QWidget):
         super().__init__()
         self.cli_args = cli_args
         self.current_tip_index = 0
-        self.main_window: Optional[QWidget] = None
+        self.main_window = None
         self._init_ui()
         self._start_tips_rotator()
         self._start_worker()
@@ -112,35 +104,11 @@ class GameLoadingWindow(QWidget):
         self.setWindowFlags(Qt.WindowType.Window | Qt.WindowType.FramelessWindowHint)
 
         self.setStyleSheet("""
-            QWidget {
-                background-color: #0e1217;
-                color: #e6edf3;
-                font-family: 'Segoe UI', Arial, sans-serif;
-            }
-            QFrame#mainCard {
-                background-color: #141922;
-                border: 2px solid #26a69a;
-                border-radius: 12px;
-            }
-            QFrame#tipBox {
-                background-color: #1a2230;
-                border: 1px solid #303c50;
-                border-radius: 8px;
-            }
-            QProgressBar {
-                background-color: #0b0e14;
-                border: 1px solid #283344;
-                border-radius: 6px;
-                text-align: center;
-                color: #00e676;
-                font-weight: bold;
-                font-size: 11px;
-            }
-            QProgressBar::chunk {
-                background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
-                    stop:0 #00796b, stop:0.5 #26a69a, stop:1 #00e676);
-                border-radius: 5px;
-            }
+            QWidget { background-color: #0e1217; color: #e6edf3; font-family: sans-serif; }
+            QFrame#mainCard { background-color: #141922; border: 2px solid #26a69a; border-radius: 12px; }
+            QFrame#tipBox { background-color: #1a2230; border: 1px solid #303c50; border-radius: 8px; }
+            QProgressBar { background-color: #0b0e14; border: 1px solid #283344; border-radius: 6px; text-align: center; color: #00e676; font-weight: bold; font-size: 11px; }
+            QProgressBar::chunk { background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #00796b, stop:0.5 #26a69a, stop:1 #00e676); border-radius: 5px; }
         """)
 
         outer_layout = QVBoxLayout(self)
@@ -152,20 +120,13 @@ class GameLoadingWindow(QWidget):
         card_layout.setContentsMargins(36, 32, 36, 28)
         card_layout.setSpacing(18)
 
-        # Top Header
         top_header = QHBoxLayout()
         header_title = QLabel("NEPSE ALGORITHMIC SCREENER")
         header_title.setStyleSheet("font-size: 19px; font-weight: bold; color: #ffffff; letter-spacing: 1px;")
         
         status_pill = QLabel("SYSTEM BOOT")
         status_pill.setStyleSheet("""
-            background-color: #004d40;
-            color: #64ffda;
-            padding: 4px 10px;
-            font-size: 10px;
-            font-weight: bold;
-            border-radius: 4px;
-            border: 1px solid #00bfa5;
+            background-color: #004d40; color: #64ffda; padding: 4px 10px; font-size: 10px; font-weight: bold; border-radius: 4px; border: 1px solid #00bfa5;
         """)
         top_header.addWidget(header_title)
         top_header.addStretch()
@@ -176,7 +137,6 @@ class GameLoadingWindow(QWidget):
         sub_header.setStyleSheet("color: #8b949e; font-size: 11px;")
         card_layout.addWidget(sub_header)
 
-        # Middle Section: Rotating Tips Box
         tip_frame = QFrame()
         tip_frame.setObjectName("tipBox")
         tip_layout = QVBoxLayout(tip_frame)
@@ -184,7 +144,7 @@ class GameLoadingWindow(QWidget):
         tip_layout.setSpacing(8)
 
         init_cat, init_title, init_body = TRADING_TIPS[0]
-        self.tip_category_label = QLabel(f"TRADING PROTOCOL & PSYCHOLOGY // {init_cat}")
+        self.tip_category_label = QLabel(f"TRADING WISDOM // {init_cat}")
         self.tip_category_label.setStyleSheet("color: #ffb74d; font-size: 10px; font-weight: bold; letter-spacing: 1.5px;")
         tip_layout.addWidget(self.tip_category_label)
 
@@ -199,7 +159,6 @@ class GameLoadingWindow(QWidget):
 
         card_layout.addWidget(tip_frame)
 
-        # Lower Section: Status & Progress
         progress_info = QHBoxLayout()
         self.status_label = QLabel("Initializing core components...")
         self.status_label.setStyleSheet("color: #58a6ff; font-size: 12px; font-weight: bold;")
@@ -219,11 +178,10 @@ class GameLoadingWindow(QWidget):
         self.progress_bar.setTextVisible(False)
         card_layout.addWidget(self.progress_bar)
 
-        # Footer
         footer_layout = QHBoxLayout()
         footer_npt = QLabel("NPT Timezone: UTC+5:45 | Market Window: Sun-Thu 11:00-15:00")
         footer_npt.setStyleSheet("color: #6e7681; font-size: 10px;")
-        footer_ver = QLabel("v1.2.1 High-Performance Desktop Release")
+        footer_ver = QLabel("v1.3.3 Desktop Release")
         footer_ver.setStyleSheet("color: #6e7681; font-size: 10px;")
         footer_layout.addWidget(footer_npt)
         footer_layout.addStretch()
@@ -265,9 +223,10 @@ class GameLoadingWindow(QWidget):
         self.percent_label.setText(f"{val}%")
         self.status_label.setText(message)
 
-    def _on_finished(self, main_window):
+    def _on_finished(self, controller):
         self.tip_timer.stop()
-        self.main_window = main_window
+        from view.gui import NepseScreenerMainWindow
+        self.main_window = NepseScreenerMainWindow(controller)
         self.main_window.show()
         self.close()
 

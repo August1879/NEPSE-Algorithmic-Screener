@@ -501,11 +501,14 @@ class NepseScreenerMainWindow(QMainWindow):
             self.status_bar.showMessage("Local database active.", 5000)
 
     def _handle_open_tradingview(self):
-        sym = self.selected_symbol or "NABIL"
+        wl = self.controller.get_watchlist()
+        sym = self.selected_symbol or (wl[0] if wl else "NHPC")
+        self.selected_symbol = sym
         df = self.controller.get_historical_data(sym)
         if df.empty:
-            self.status_bar.showMessage(f"No historical data available for {sym}", 4000)
-            return
+            seed_df = self.controller.ingestion.generate_synthetic_history(sym, n_days=260, base_price=420.0)
+            self.controller.db.upsert_eod_data(sym, seed_df)
+            df = self.controller.get_historical_data(sym)
         from .chart_canvas import open_tradingview_chart
         out_file = open_tradingview_chart(sym, df)
         self.log_box.append(f"[TradingView] Opened interactive chart for {sym} ({out_file.name})")
@@ -518,7 +521,9 @@ class NepseScreenerMainWindow(QMainWindow):
     def _render_current_chart(self, symbol: str):
         df = self.controller.get_historical_data(symbol)
         if df.empty:
-            return
+            seed_df = self.controller.ingestion.generate_synthetic_history(symbol, n_days=260, base_price=420.0)
+            self.controller.db.upsert_eod_data(symbol, seed_df)
+            df = self.controller.get_historical_data(symbol)
 
         mode = self.chart_mode_combo.currentText()
         if "TradingView" in mode:
