@@ -227,14 +227,17 @@ class NepseScreenerMainWindow(QMainWindow):
         chart_header.addStretch()
 
         self.chart_mode_combo = QComboBox()
-        if WEBENGINE_AVAILABLE:
-            self.chart_mode_combo.addItems(["Classic (Matplotlib)", "TradingView (Interactive)"])
-        else:
-            self.chart_mode_combo.addItems(["Classic (Matplotlib)"])
+        self.chart_mode_combo.addItems(["Classic (Matplotlib)", "TradingView (Interactive)"])
         self.chart_mode_combo.currentTextChanged.connect(self._handle_chart_mode_change)
 
         chart_header.addWidget(QLabel("Engine:"))
         chart_header.addWidget(self.chart_mode_combo)
+
+        self.browser_btn = QPushButton("↗ Open in Browser")
+        self.browser_btn.setStyleSheet("background-color: #37474f; color: #80d8ff; font-weight: bold; font-size: 11px;")
+        self.browser_btn.clicked.connect(self._handle_open_tradingview)
+        chart_header.addWidget(self.browser_btn)
+
         right_layout.addLayout(chart_header)
 
         self.chart_stack = QStackedWidget()
@@ -518,20 +521,31 @@ class NepseScreenerMainWindow(QMainWindow):
             return
 
         mode = self.chart_mode_combo.currentText()
-        if "TradingView" in mode and getattr(self, "web_view", None) is not None:
+        if "TradingView" in mode:
             try:
+                if getattr(self, "web_view", None) is None:
+                    from PyQt6.QtWebEngineWidgets import QWebEngineView
+                    from PyQt6.QtWebEngineCore import QWebEngineSettings
+                    self.web_view = QWebEngineView()
+                    try:
+                        self.web_view.settings().setAttribute(QWebEngineSettings.WebAttribute.LocalContentCanAccessRemoteUrls, True)
+                        self.web_view.settings().setAttribute(QWebEngineSettings.WebAttribute.LocalContentCanAccessFileUrls, True)
+                        self.web_view.settings().setAttribute(QWebEngineSettings.WebAttribute.JavascriptEnabled, True)
+                    except Exception as e:
+                        logger.warning(f"WebEngine settings error: {e}")
+                    self.chart_stack.addWidget(self.web_view)
+
                 from .chart_canvas import export_tradingview_html
                 out_file = export_tradingview_html(symbol, df)
                 html_content = out_file.read_text(encoding="utf-8")
                 self.web_view.setHtml(html_content, QUrl("https://unpkg.com/"))
-                self.chart_stack.setCurrentIndex(0)
+                self.chart_stack.setCurrentWidget(self.web_view)
                 return
             except Exception as e:
-                logger.warning(f"TradingView load error: {e}. Falling back to Matplotlib.")
+                logger.warning(f"TradingView failed: {e}. Falling back to Matplotlib.")
 
         self.canvas.plot_stock(symbol, df)
-        idx = 1 if getattr(self, "web_view", None) is not None else 0
-        self.chart_stack.setCurrentIndex(idx)
+        self.chart_stack.setCurrentWidget(self.canvas)
 
 
 class CLIViewer:
