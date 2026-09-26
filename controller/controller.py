@@ -144,3 +144,11 @@ class AppController:
         if success:
             self.db._init_db()
         return success, msg
+
+    def get_auto_sync_startup(self) -> bool:
+        from config import get_auto_sync_on_startup
+        return get_auto_sync_on_startup()
+
+    def set_auto_sync_startup(self, enabled: bool):
+        from config import set_auto_sync_on_startup
+        set_auto_sync_on_startup(enabled)

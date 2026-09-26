@@ -33,6 +33,7 @@ except Exception:
 # Check PyQt6 / PySide6 availability
 try:
     from PyQt6.QtWidgets import (
+        QCheckBox,
         QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
         QSplitter, QTableWidget, QTableWidgetItem, QLabel, QPushButton, QStackedWidget,
         QLineEdit, QHeaderView, QProgressBar, QTextEdit, QStatusBar, QComboBox
@@ -154,7 +155,13 @@ class NepseScreenerMainWindow(QMainWindow):
         self.sync_all_btn.setStyleSheet("background-color: #455a64; color: white;")
         self.sync_all_btn.clicked.connect(self._handle_sync_all)
 
+        self.auto_sync_startup_cb = QCheckBox("Auto-sync on startup")
+        self.auto_sync_startup_cb.setStyleSheet("color: #bbdefb; font-size: 11px;")
+        self.auto_sync_startup_cb.setChecked(self.controller.get_auto_sync_startup())
+        self.auto_sync_startup_cb.toggled.connect(self._handle_toggle_auto_sync_startup)
+
         sched_banner.addWidget(self.cloud_sync_btn)
+        sched_banner.addWidget(self.auto_sync_startup_cb)
         sched_banner.addWidget(self.auto_sched_btn)
         sched_banner.addWidget(self.sync_all_btn)
         left_layout.addLayout(sched_banner)
@@ -471,6 +478,12 @@ class NepseScreenerMainWindow(QMainWindow):
             on_finished=on_finished,
             on_error=on_error
         )
+
+        def _handle_toggle_auto_sync_startup(self, checked: bool):
+        self.controller.set_auto_sync_startup(checked)
+        status = "enabled" if checked else "disabled"
+        self.status_bar.showMessage(f"Auto-sync on startup {status}.", 4000)
+        self.log_box.append(f"Auto-sync on startup {status}.")
 
     def _handle_cloud_sync(self):
         self.log_box.append("Connecting to GitHub to download latest market database...")

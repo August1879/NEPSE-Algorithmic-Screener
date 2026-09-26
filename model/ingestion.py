@@ -652,9 +652,23 @@ def sync_database_from_github(url: str, target_path: Path) -> Tuple[bool, str]:
                     tmp = target_path.with_suffix(".tmp")
                     with open(tmp, "wb") as f:
                         f.write(content)
+                    import sqlite3
+                    try:
+                        chk_conn = sqlite3.connect(tmp)
+                        chk_cur = chk_conn.cursor()
+                        chk_cur.execute("SELECT count(*) FROM tickers WHERE is_active=1;")
+                        ticker_count = chk_cur.fetchone()[0]
+                        chk_conn.close()
+                        if ticker_count == 0:
+                            tmp.unlink(missing_ok=True)
+                            return False, "Cloud database contains 0 active tickers. Keeping local database."
+                    except Exception as chk_err:
+                        tmp.unlink(missing_ok=True)
+                        return False, f"Cloud database validation failed: {chk_err}. Keeping local database."
+
                     tmp.replace(target_path)
                     mb_size = len(content) / (1024 * 1024)
-                    return True, f"Successfully synced latest database from GitHub ({mb_size:.2f} MB)."
+                    return True, f"Successfully synced latest database from GitHub ({mb_size:.2f} MB, {ticker_count} tickers)."
                 else:
                     return False, "Downloaded content is not a valid SQLite database."
             return False, f"GitHub returned HTTP {response.status}"
