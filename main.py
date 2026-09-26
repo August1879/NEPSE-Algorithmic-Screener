@@ -24,6 +24,10 @@ logger = logging.getLogger("nepse_screener")
 from controller.controller import AppController
 
 def main():
+    # Unblock Chromium web security for local-to-remote CDN scripts
+    os.environ["QTWEBENGINE_CHROMIUM_FLAGS"] = "--disable-web-security --allow-file-access-from-files"
+    if "--disable-web-security" not in sys.argv:
+        sys.argv.extend(["--disable-web-security", "--allow-file-access-from-files"])
     parser = argparse.ArgumentParser(description="NEPSE Algorithmic Screener & Automated Scheduler")
     parser.add_argument("--cli", action="store_true", help="Force headless CLI mode")
     parser.add_argument("--all", action="store_true", help="Scrape and screen all NEPSE stocks (not just watchlist)")

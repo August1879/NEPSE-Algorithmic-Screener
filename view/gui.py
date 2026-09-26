@@ -522,7 +522,8 @@ class NepseScreenerMainWindow(QMainWindow):
             try:
                 from .chart_canvas import export_tradingview_html
                 out_file = export_tradingview_html(symbol, df)
-                self.web_view.setUrl(QUrl.fromLocalFile(str(out_file.resolve())))
+                html_content = out_file.read_text(encoding="utf-8")
+                self.web_view.setHtml(html_content, QUrl("https://unpkg.com/"))
                 self.chart_stack.setCurrentIndex(0)
                 return
             except Exception as e:
