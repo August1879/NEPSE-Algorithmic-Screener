@@ -479,7 +479,7 @@ class NepseScreenerMainWindow(QMainWindow):
             on_error=on_error
         )
 
-        def _handle_toggle_auto_sync_startup(self, checked: bool):
+    def _handle_toggle_auto_sync_startup(self, checked: bool):
         self.controller.set_auto_sync_startup(checked)
         status = "enabled" if checked else "disabled"
         self.status_bar.showMessage(f"Auto-sync on startup {status}.", 4000)
