@@ -62,6 +62,7 @@ class NepseScreenerMainWindow(QMainWindow):
         self.clock_timer = QTimer(self)
         self.clock_timer.timeout.connect(self._update_market_clock_display)
         self.clock_timer.start(1000)
+        QTimer.singleShot(0, self._populate_table_from_cache)
         QTimer.singleShot(600, self._handle_cloud_sync)
 
     def _init_ui(self):
@@ -227,7 +228,7 @@ class NepseScreenerMainWindow(QMainWindow):
 
         self.chart_mode_combo = QComboBox()
         if WEBENGINE_AVAILABLE:
-            self.chart_mode_combo.addItems(["TradingView (Interactive)", "Classic (Matplotlib)"])
+            self.chart_mode_combo.addItems(["Classic (Matplotlib)", "TradingView (Interactive)"])
         else:
             self.chart_mode_combo.addItems(["Classic (Matplotlib)"])
         self.chart_mode_combo.currentTextChanged.connect(self._handle_chart_mode_change)
@@ -257,9 +258,8 @@ class NepseScreenerMainWindow(QMainWindow):
         self.setStatusBar(self.status_bar)
         self.status_bar.showMessage("Ready. Select a ticker or activate auto-scraping.")
 
-        # Initial populate
+        # Initial populate deferred to event loop for instant window display
         self._update_market_clock_display()
-        self._populate_table_from_cache()
 
     def _update_market_clock_display(self):
         """Updates the live NPT clock and market operational status badge."""
@@ -352,7 +352,7 @@ class NepseScreenerMainWindow(QMainWindow):
             data = signal_map.get(symbol, {})
             self._update_table_row(row_idx, symbol, data)
 
-        if display_symbols and not self.selected_symbol:
+        if display_symbols:
             self.table.selectRow(0)
 
     def _update_table_row(self, row_idx: int, symbol: str, data: Dict[str, Any]):

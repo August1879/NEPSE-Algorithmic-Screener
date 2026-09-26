@@ -42,7 +42,7 @@ jobs:
 
       - name: Build Standalone Windows Application with PyInstaller
         run: |
-          pyinstaller --noconfirm --onedir --console --name "NEPSE_Algorithmic_Screener" --add-data "view/lightweight-charts.standalone.production.js;view" main.py
+          pyinstaller --noconfirm --onedir --noconsole --name "NEPSE_Algorithmic_Screener" --add-data "view/lightweight-charts.standalone.production.js;view" main.py
 
       - name: Compress Release Folder to Zip
         run: |
