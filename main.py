@@ -23,8 +23,6 @@ logging.basicConfig(
 )
 logger = logging.getLogger("nepse_screener")
 
-from controller.controller import AppController
-
 def main():
     parser = argparse.ArgumentParser(description="NEPSE Algorithmic Screener & Automated Scheduler")
     parser.add_argument("--cli", action="store_true", help="Force headless CLI mode")
@@ -36,85 +34,60 @@ def main():
     parser.add_argument("--tradingview", type=str, help="Launch interactive TradingView chart in browser (e.g. --tradingview SHIVM)")
     args, _ = parser.parse_known_args()
 
+    # If CLI commands are explicitly requested, run them directly
     if args.tradingview or args.export_chart or args.schedule or args.cli:
         from controller.controller import AppController
         controller = AppController()
         if args.add:
             controller.add_ticker_to_watchlist(args.add)
-    
-    if args.tradingview:
-        sym = args.tradingview.upper().strip()
-        df = controller.get_historical_data(sym)
-        if df.empty:
-            print(f"No historical data available in database for {sym}.")
+        
+        if args.tradingview:
+            sym = args.tradingview.upper().strip()
+            df = controller.get_historical_data(sym)
+            if df.empty:
+                print(f"No historical data available in database for {sym}.")
+                return
+            from view.chart_canvas import open_tradingview_chart
+            out = open_tradingview_chart(sym, df)
+            print(f"✓ Interactive TradingView chart generated at: {out.resolve()}")
             return
-        from view.chart_canvas import open_tradingview_chart
-        out = open_tradingview_chart(sym, df)
-        print(f"✓ Interactive TradingView chart generated at: {out.resolve()}")
-        return
 
-    if args.export_chart:
-        from view.chart_canvas import ChartCanvas
-        sym = args.export_chart.upper().strip()
-        df = controller.get_historical_data(sym)
-        canvas = ChartCanvas(width=10, height=7)
-        canvas.plot_stock(sym, df)
-        out_file = f"{sym.lower()}_analysis.png"
-        canvas.export_figure(out_file)
-        print(f"Chart successfully saved to {out_file}")
-        return
+        if args.export_chart:
+            from view.chart_canvas import ChartCanvas
+            sym = args.export_chart.upper().strip()
+            df = controller.get_historical_data(sym)
+            canvas = ChartCanvas(width=10, height=7)
+            canvas.plot_stock(sym, df)
+            out_file = f"{sym.lower()}_analysis.png"
+            canvas.export_figure(out_file)
+            print(f"Chart successfully saved to {out_file}")
+            return
 
-    if args.schedule:
-        from view.gui import CLIViewer
-        CLIViewer.run_scheduler_daemon(controller, poll_interval_minutes=args.interval)
-        return
-
-    # Launch Desktop GUI unless explicitly instructed to run headless CLI
-    if not args.cli:
-        if sys.platform.startswith("linux") and "DISPLAY" not in os.environ:
-            controller = AppController()
+        if args.schedule:
             from view.gui import CLIViewer
-            CLIViewer.render_dashboard(controller, all_stocks=args.all)
+            CLIViewer.run_scheduler_daemon(controller, poll_interval_minutes=args.interval)
             return
 
-        from PyQt6.QtWidgets import QApplication, QSplashScreen
-        from PyQt6.QtGui import QPixmap, QColor, QPainter, QFont
-        from PyQt6.QtCore import Qt
-
-        app = QApplication(sys.argv)
-
-        splash_pix = QPixmap(420, 190)
-        splash_pix.fill(QColor("#181a20"))
-        painter = QPainter(splash_pix)
-        painter.setPen(QColor("#26a69a"))
-        painter.setFont(QFont("Arial", 14, QFont.Weight.Bold))
-        painter.drawText(24, 55, "NEPSE Algorithmic Screener")
-        painter.setPen(QColor("#e0e0e0"))
-        painter.setFont(QFont("Arial", 10))
-        painter.drawText(24, 95, "Initializing market database & charts...")
-        painter.setPen(QColor("#888888"))
-        painter.setFont(QFont("Arial", 9))
-        painter.drawText(24, 145, "v1.2.0 • Fast Startup Desktop Release")
-        painter.end()
-
-        splash = QSplashScreen(splash_pix, Qt.WindowType.WindowStaysOnTopHint)
-        splash.show()
-        app.processEvents()
-
-        from controller.controller import AppController
-        from view.gui import NepseScreenerMainWindow
-
-        controller = AppController()
-        if args.add:
-            controller.add_ticker_to_watchlist(args.add)
-
-        window = NepseScreenerMainWindow(controller)
-        window.show()
-        splash.finish(window)
-        sys.exit(app.exec())
-    else:
         from view.gui import CLIViewer
         CLIViewer.render_dashboard(controller, all_stocks=args.all)
+        return
+
+    # Headless Linux fallback
+    if sys.platform.startswith("linux") and "DISPLAY" not in os.environ:
+        from controller.controller import AppController
+        from view.gui import CLIViewer
+        controller = AppController()
+        CLIViewer.render_dashboard(controller, all_stocks=args.all)
+        return
+
+    # --- INSTANT DESKTOP LAUNCH (< 0.2s) WITH GAME-STYLE LOADING SCREEN ---
+    from PyQt6.QtWidgets import QApplication
+    from view.loading_screen import GameLoadingWindow
+
+    app = QApplication(sys.argv)
+    loading_screen = GameLoadingWindow(cli_args=args)
+    loading_screen.show()
+    sys.exit(app.exec())
 
 if __name__ == "__main__":
     try:
