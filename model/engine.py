@@ -4,7 +4,7 @@ Uses pandas, numpy, and scipy.signal without external dependency baggage.
 """
 import numpy as np
 import pandas as pd
-from scipy.signal import find_peaks
+# from scipy.signal import find_peaks (lazy)
 from typing import Tuple
 
 from config import (
@@ -112,6 +112,7 @@ class NepseTechnicalEngine:
             median_p = float(np.nanmedian(prices))
             prominence = max(1.0, median_p * prominence_pct)
 
+            from scipy.signal import find_peaks
             # Local peaks
             peaks, _ = find_peaks(prices, distance=distance, prominence=prominence)
             is_peak[peaks] = True
