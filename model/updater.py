@@ -15,7 +15,7 @@ import urllib.request
 
 logger = logging.getLogger(__name__)
 
-APP_VERSION = "1.4.7"
+APP_VERSION = "1.5.0"
 GITHUB_REPO = "August1879/NEPSE-Algorithmic-Screener"
 RELEASES_API_URL = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
 
