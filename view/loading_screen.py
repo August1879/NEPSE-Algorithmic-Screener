@@ -1,3 +1,9 @@
+"""
+Game-style Loading Screen for NEPSE Algorithmic Screener.
+Opens instantaneously (< 0.2s) upon launch, showing a dynamic progress bar,
+system initialization stages, and a rotating slideshow of trading tips and market wisdom
+while heavy dependencies and models load asynchronously in the background.
+"""
 import sys
 import time
 from typing import Optional, List, Tuple
@@ -22,7 +28,7 @@ TRADING_TIPS: List[Tuple[str, str, str]] = [
     (
         "VOLUME CONVICTION",
         "Volume Precedes Price",
-        "A breakout with volume Z-score > +2.0σ confirms institutional accumulation. Breakouts on thin volume frequently trap retail breakout buyers."
+        "A breakout with volume Z-score > +2.0 sigma confirms institutional accumulation. Breakouts on thin volume frequently trap retail breakout buyers."
     ),
     (
         "MOMENTUM & PULLBACKS",
@@ -36,13 +42,13 @@ TRADING_TIPS: List[Tuple[str, str, str]] = [
     ),
     (
         "STATISTICAL VOLATILITY",
-        "Relative Volatility Bands (RMS ±2σ)",
+        "Relative Volatility Bands (RMS +- 2 sigma)",
         "When price touches the lower 2-sigma RMS volatility band while RSI is oversold, the probability of mean-reversion toward the 20-day SMA is statistically maximized."
     ),
     (
         "NEPSE TIMING",
         "Market Hours & Liquidity Windows",
-        "NEPSE operates Sunday–Thursday 11:00 AM to 3:00 PM NPT. Institutional volume clusters between 11:15 AM - 1:00 PM; avoid chasing illiquid opening ticks."
+        "NEPSE operates Sunday-Thursday 11:00 AM to 3:00 PM NPT. Institutional volume clusters between 11:15 AM - 1:00 PM; avoid chasing illiquid opening ticks."
     ),
     (
         "PSYCHOLOGY & DISCIPLINE",
@@ -68,21 +74,21 @@ class InitializationWorker(QThread):
     def run(self):
         try:
             self.progress_signal.emit(15, "Mounting SQLite database cache...")
-            time.sleep(0.1)
+            time.sleep(0.12)
             self.progress_signal.emit(35, "Loading technical calculation libraries...")
             from controller.controller import AppController
-            time.sleep(0.1)
+            time.sleep(0.12)
             self.progress_signal.emit(60, "Calibrating NEPSE trading calendar (NPT)...")
             controller = AppController()
             if self.cli_args and getattr(self.cli_args, "add", None):
                 controller.add_ticker_to_watchlist(self.cli_args.add)
-            time.sleep(0.1)
+            time.sleep(0.12)
             self.progress_signal.emit(85, "Validating core watchlist & technical indicators...")
             for sym in controller.get_watchlist():
                 controller.get_historical_data(sym)
-            time.sleep(0.1)
+            time.sleep(0.12)
             self.progress_signal.emit(100, "System ready. Launching dashboard...")
-            time.sleep(0.1)
+            time.sleep(0.15)
             self.finished_signal.emit(controller)
         except Exception as e:
             import traceback
@@ -99,10 +105,9 @@ class GameLoadingWindow(QWidget):
         self._start_worker()
 
     def _init_ui(self):
-        self.setWindowTitle("NEPSE Screener — Loading Engine")
+        self.setWindowTitle("NEPSE Screener - Loading Engine")
         self.setFixedSize(740, 460)
         self.setWindowFlags(Qt.WindowType.Window | Qt.WindowType.FramelessWindowHint)
-
         self.setStyleSheet("""
             QWidget { background-color: #0e1217; color: #e6edf3; font-family: sans-serif; }
             QFrame#mainCard { background-color: #141922; border: 2px solid #26a69a; border-radius: 12px; }
@@ -110,84 +115,66 @@ class GameLoadingWindow(QWidget):
             QProgressBar { background-color: #0b0e14; border: 1px solid #283344; border-radius: 6px; text-align: center; color: #00e676; font-weight: bold; font-size: 11px; }
             QProgressBar::chunk { background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #00796b, stop:0.5 #26a69a, stop:1 #00e676); border-radius: 5px; }
         """)
-
         outer_layout = QVBoxLayout(self)
         outer_layout.setContentsMargins(0, 0, 0, 0)
-
         card = QFrame()
         card.setObjectName("mainCard")
         card_layout = QVBoxLayout(card)
         card_layout.setContentsMargins(36, 32, 36, 28)
         card_layout.setSpacing(18)
-
         top_header = QHBoxLayout()
         header_title = QLabel("NEPSE ALGORITHMIC SCREENER")
         header_title.setStyleSheet("font-size: 19px; font-weight: bold; color: #ffffff; letter-spacing: 1px;")
-        
         status_pill = QLabel("SYSTEM BOOT")
-        status_pill.setStyleSheet("""
-            background-color: #004d40; color: #64ffda; padding: 4px 10px; font-size: 10px; font-weight: bold; border-radius: 4px; border: 1px solid #00bfa5;
-        """)
+        status_pill.setStyleSheet("background-color: #004d40; color: #64ffda; padding: 4px 10px; font-size: 10px; font-weight: bold; border-radius: 4px; border: 1px solid #00bfa5;")
         top_header.addWidget(header_title)
         top_header.addStretch()
         top_header.addWidget(status_pill)
         card_layout.addLayout(top_header)
-
         sub_header = QLabel("High-Performance Quantitative Screening & Technical Engine for Nepal Stock Exchange")
         sub_header.setStyleSheet("color: #8b949e; font-size: 11px;")
         card_layout.addWidget(sub_header)
-
         tip_frame = QFrame()
         tip_frame.setObjectName("tipBox")
         tip_layout = QVBoxLayout(tip_frame)
         tip_layout.setContentsMargins(22, 16, 22, 18)
         tip_layout.setSpacing(8)
-
         init_cat, init_title, init_body = TRADING_TIPS[0]
-        self.tip_category_label = QLabel(f"TRADING WISDOM // {init_cat}")
+        self.tip_category_label = QLabel(f"TRADING PROTOCOL & PSYCHOLOGY // {init_cat}")
         self.tip_category_label.setStyleSheet("color: #ffb74d; font-size: 10px; font-weight: bold; letter-spacing: 1.5px;")
         tip_layout.addWidget(self.tip_category_label)
-
         self.tip_title_label = QLabel(init_title)
         self.tip_title_label.setStyleSheet("color: #ffffff; font-size: 15px; font-weight: bold;")
         tip_layout.addWidget(self.tip_title_label)
-
         self.tip_body_label = QLabel(init_body)
         self.tip_body_label.setWordWrap(True)
         self.tip_body_label.setStyleSheet("color: #c9d1d9; font-size: 12px; line-height: 1.5;")
         tip_layout.addWidget(self.tip_body_label)
-
         card_layout.addWidget(tip_frame)
-
         progress_info = QHBoxLayout()
         self.status_label = QLabel("Initializing core components...")
         self.status_label.setStyleSheet("color: #58a6ff; font-size: 12px; font-weight: bold;")
-        
         self.percent_label = QLabel("0%")
         self.percent_label.setStyleSheet("color: #00e676; font-size: 13px; font-weight: bold;")
-        
         progress_info.addWidget(self.status_label)
         progress_info.addStretch()
         progress_info.addWidget(self.percent_label)
         card_layout.addLayout(progress_info)
-
         self.progress_bar = QProgressBar()
         self.progress_bar.setRange(0, 100)
         self.progress_bar.setValue(0)
         self.progress_bar.setFixedHeight(18)
         self.progress_bar.setTextVisible(False)
         card_layout.addWidget(self.progress_bar)
-
         footer_layout = QHBoxLayout()
         footer_npt = QLabel("NPT Timezone: UTC+5:45 | Market Window: Sun-Thu 11:00-15:00")
         footer_npt.setStyleSheet("color: #6e7681; font-size: 10px;")
-        footer_ver = QLabel("v1.3.3 Desktop Release")
+        footer_ver = QLabel("High-Performance Desktop Release")
         footer_ver.setStyleSheet("color: #6e7681; font-size: 10px;")
         footer_layout.addWidget(footer_npt)
         footer_layout.addStretch()
         footer_layout.addWidget(footer_ver)
         card_layout.addLayout(footer_layout)
-
         outer_layout.addWidget(card)
         self._center_on_screen()
 
