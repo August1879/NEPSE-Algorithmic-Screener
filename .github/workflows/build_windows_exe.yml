@@ -41,6 +41,8 @@ jobs:
           python -c "import urllib.request; urllib.request.urlretrieve('https://unpkg.com/lightweight-charts@4.1.3/dist/lightweight-charts.standalone.production.js', 'view/lightweight-charts.standalone.production.js')"
 
       - name: Run Repository File Integrity Suite
+        env:
+          PYTHONIOENCODING: "utf-8"
         run: |
           python test_file_integrity.py
 

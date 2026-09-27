@@ -1,3 +1,5 @@
+import sys
+if hasattr(sys.stdout, "reconfigure"): sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 """
 NEPSE Algorithmic Screener - Comprehensive File Integrity & Verification Test Suite.
 Validates file existence, Python syntax compilation, configuration parameters,
@@ -142,7 +144,7 @@ def run_integrity_suite():
         is_entry = enriched.get("is_entry_signal", pd.Series([False]*len(enriched))).iloc[-1]
 
         reporter.assert_true(pd.notna(rsi) and 0.0 <= rsi <= 100.0, f"RSI(14) calculated within bounds: {rsi:.2f}")
-        reporter.assert_true(pd.notna(vol_z) and vol_z > 2.0, f"Volume Z-Score correctly identifies spike: {vol_z:+.2f}σ")
+        reporter.assert_true(pd.notna(vol_z) and vol_z > 2.0, f"Volume Z-Score correctly identifies spike: {vol_z:+.2f} sigma")
         reporter.assert_true(bool(is_entry) is True or rsi < 30.0, "Oversold RSI and Volume Spike detected in technical pipeline")
     except Exception as e:
         reporter.assert_true(False, "NepseTechnicalEngine execution failed", str(e))
