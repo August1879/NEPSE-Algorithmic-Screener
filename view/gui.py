@@ -1,15 +1,18 @@
-import time
-from model.ingestion import NepseMarketCalendar
 """
-Desktop View Layer for NEPSE Algorithmic Screener.
-Built with PyQt6 (with PySide6 / CLI compatibility), featuring an interactive
-dashboard, automated market-hours scheduler, live NPT status, green-highlighted entry setups,
-and embedded Matplotlib technical charts.
+Desktop View Layer for NEPSE Algorithmic Screener & Quantitative Suite.
+Modern, sleek tabbed interface featuring:
+  • Screener & Interactive Technical Charts
+  • Market Psychology & Crowd Breadth Index
+  • Live Financial News & Policy Announcements
+  • Settings, Cloud Database Sync & Scheduler Daemon
 """
 import sys
+import time
 import logging
 from typing import Optional, Dict, Any, List
 import pandas as pd
+from datetime import datetime
+from model.ingestion import NepseMarketCalendar
 
 from config import (
     APP_TITLE,
@@ -23,8 +26,9 @@ from .chart_canvas import ChartCanvas
 logger = logging.getLogger(__name__)
 
 try:
-    from PyQt6.QtWebEngineWidgets import QWebEngineView
     from PyQt6.QtCore import QUrl
+    from PyQt6.QtWebEngineWidgets import QWebEngineView
+    from PyQt6.QtWebEngineCore import QWebEngineSettings
     WEBENGINE_AVAILABLE = True
 except Exception:
     WEBENGINE_AVAILABLE = False
@@ -33,10 +37,10 @@ except Exception:
 # Check PyQt6 / PySide6 availability
 try:
     from PyQt6.QtWidgets import (
-        QCheckBox,
         QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
         QSplitter, QTableWidget, QTableWidgetItem, QLabel, QPushButton, QStackedWidget,
-        QLineEdit, QHeaderView, QProgressBar, QTextEdit, QStatusBar, QComboBox
+        QLineEdit, QHeaderView, QProgressBar, QTextEdit, QStatusBar, QComboBox,
+        QCheckBox, QTabWidget, QGroupBox, QFrame
     )
     from PyQt6.QtCore import Qt, QTimer
     from PyQt6.QtGui import QColor, QFont, QBrush
@@ -55,263 +59,439 @@ class NepseScreenerMainWindow(QMainWindow):
         super().__init__()
         self.controller = controller
         self.selected_symbol: Optional[str] = None
-        self.current_filter = "All Stocks"
+        self.current_filter = "All Listed Stocks"
+        self.web_view = None
         self._init_ui()
 
         # Timer for updating live NPT clock & market status
         self.clock_timer = QTimer(self)
         self.clock_timer.timeout.connect(self._update_market_clock_display)
         self.clock_timer.start(1000)
-        QTimer.singleShot(0, self._populate_table_from_cache)
-        QTimer.singleShot(600, self._handle_cloud_sync)
+        QTimer.singleShot(0, self._deferred_startup)
 
     def _init_ui(self):
         self.setWindowTitle(APP_TITLE)
         self.resize(WINDOW_WIDTH, WINDOW_HEIGHT)
         self.setStyleSheet("""
-            QMainWindow { background-color: #121212; }
-            QLabel { color: #ffffff; }
+            QMainWindow { background-color: #111417; }
+            QLabel { color: #e0e0e0; }
+            QTabWidget::pane {
+                border: 1px solid #23272d;
+                background-color: #161a1e;
+                border-radius: 6px;
+            }
+            QTabBar::tab {
+                background: #191d22;
+                color: #9aa0a6;
+                padding: 9px 18px;
+                font-weight: bold;
+                font-size: 12px;
+                border-top-left-radius: 5px;
+                border-top-right-radius: 5px;
+                margin-right: 3px;
+                border: 1px solid #23272d;
+                border-bottom: none;
+            }
+            QTabBar::tab:selected {
+                background: #1e242b;
+                color: #00e676;
+                border-bottom: 2px solid #00e676;
+            }
+            QTabBar::tab:hover:!selected {
+                background: #20262e;
+                color: #e0e0e0;
+            }
             QPushButton {
-                background-color: #2b5c8f;
+                background-color: #1f3a52;
                 color: #ffffff;
                 font-weight: bold;
-                padding: 6px 12px;
-                border-radius: 4px;
+                padding: 6px 14px;
+                border-radius: 5px;
+                border: 1px solid #2e5577;
             }
-            QPushButton:hover { background-color: #3b7cbd; }
+            QPushButton:hover { background-color: #2b5073; }
+            QPushButton:pressed { background-color: #152c40; }
             QLineEdit, QComboBox {
-                background-color: #242424;
+                background-color: #1a1e24;
                 color: #ffffff;
-                border: 1px solid #444444;
-                padding: 5px;
-                border-radius: 4px;
+                border: 1px solid #333a42;
+                padding: 6px 10px;
+                border-radius: 5px;
+            }
+            QLineEdit:focus, QComboBox:focus {
+                border: 1px solid #00b0ff;
             }
             QTableWidget {
-                background-color: #1e1e1e;
-                color: #ffffff;
-                gridline-color: #333333;
-                selection-background-color: #2c3e50;
+                background-color: #161a1e;
+                color: #e0e0e0;
+                gridline-color: #242930;
+                selection-background-color: #1e354d;
+                border: 1px solid #242930;
+                border-radius: 5px;
             }
             QHeaderView::section {
-                background-color: #2a2a2a;
-                color: #dddddd;
-                padding: 5px;
+                background-color: #1c2127;
+                color: #90a4ae;
+                padding: 6px;
                 font-weight: bold;
-                border: 1px solid #333333;
+                border: 1px solid #242930;
             }
             QProgressBar {
-                border: 1px solid #444444;
+                border: 1px solid #333a42;
                 border-radius: 4px;
                 text-align: center;
                 color: white;
-                background-color: #242424;
-            }
-            QProgressBar::chunk { background-color: #26a69a; }
-            QTextEdit {
-                background-color: #1a1a1a;
-                color: #81c784;
-                font-family: monospace;
+                background-color: #1a1e24;
                 font-size: 11px;
-                border: 1px solid #333333;
+            }
+            QProgressBar::chunk { background-color: #00b0ff; border-radius: 3px; }
+            QGroupBox {
+                border: 1px solid #262c35;
+                border-radius: 6px;
+                margin-top: 10px;
+                font-weight: bold;
+                color: #90caf9;
+                padding: 12px;
+            }
+            QGroupBox::title {
+                subcontrol-origin: margin;
+                left: 10px;
+                padding: 0 4px;
+            }
+            QTextEdit {
+                background-color: #14171a;
+                color: #a5d6a7;
+                font-family: Consolas, monospace;
+                font-size: 11px;
+                border: 1px solid #262c35;
+                border-radius: 5px;
+                padding: 6px;
             }
         """)
 
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
-        main_layout = QHBoxLayout(central_widget)
+        main_layout = QVBoxLayout(central_widget)
+        main_layout.setContentsMargins(10, 8, 10, 8)
+        main_layout.setSpacing(8)
 
-        splitter = QSplitter(Qt.Orientation.Horizontal)
-        main_layout.addWidget(splitter)
+        # === GLOBAL TOP HEADER ===
+        header_bar = QHBoxLayout()
+        header_title = QLabel("📈 NEPSE ALGORITHMIC QUANT SUITE")
+        header_title.setFont(QFont("Arial", 12, QFont.Weight.Bold))
+        header_title.setStyleSheet("color: #ffffff; letter-spacing: 0.5px;")
+        header_bar.addWidget(header_title)
 
-        # === LEFT PANEL: CONTROLS & WATCHLIST TABLE ===
-        left_widget = QWidget()
-        left_layout = QVBoxLayout(left_widget)
-        left_layout.setContentsMargins(10, 10, 10, 10)
-
-        # Title & Live Market Status
-        header_layout = QHBoxLayout()
-        header_label = QLabel("NEPSE Screener & Scheduler")
-        header_font = QFont()
-        header_font.setPointSize(13)
-        header_font.setBold(True)
-        header_label.setFont(header_font)
-        header_layout.addWidget(header_label)
+        header_bar.addStretch()
 
         self.market_status_badge = QLabel("Checking NPT...")
-        self.market_status_badge.setStyleSheet("color: #ffb74d; font-weight: bold; font-size: 11px;")
-        header_layout.addWidget(self.market_status_badge, alignment=Qt.AlignmentFlag.AlignRight)
-        left_layout.addLayout(header_layout)
+        self.market_status_badge.setStyleSheet("color: #ffb74d; font-weight: bold; font-size: 11px; background-color: #21262d; padding: 4px 10px; border-radius: 4px;")
+        header_bar.addWidget(self.market_status_badge)
+        main_layout.addLayout(header_bar)
 
-        # Automated Scheduler Controls Banner
-        sched_banner = QHBoxLayout()
-        self.cloud_sync_btn = QPushButton("☁ Sync Cloud (GitHub)")
-        self.cloud_sync_btn.setStyleSheet("background-color: #5c6bc0; color: white; font-weight: bold;")
-        self.cloud_sync_btn.clicked.connect(self._handle_cloud_sync)
+        # === MAIN TAB WIDGET ===
+        self.tab_widget = QTabWidget()
+        main_layout.addWidget(self.tab_widget)
 
-        self.auto_sched_btn = QPushButton("▶ Enable Auto-Scraping (10:45-2:45 NPT)")
-        self.auto_sched_btn.setStyleSheet("background-color: #00796b; color: white;")
-        self.auto_sched_btn.clicked.connect(self._toggle_auto_scheduler)
+        # -----------------------------------------------------------------
+        # TAB 1: 📊 SCREENER & TECHNICAL CHARTS
+        # -----------------------------------------------------------------
+        screener_tab = QWidget()
+        screener_layout = QHBoxLayout(screener_tab)
+        screener_layout.setContentsMargins(8, 8, 8, 8)
 
-        self.sync_all_btn = QPushButton("Sync All Stocks")
-        self.sync_all_btn.setStyleSheet("background-color: #455a64; color: white;")
-        self.sync_all_btn.clicked.connect(self._handle_sync_all)
+        splitter = QSplitter(Qt.Orientation.Horizontal)
+        screener_layout.addWidget(splitter)
 
-        self.auto_sync_startup_cb = QCheckBox("Auto-sync on startup")
-        self.auto_sync_startup_cb.setStyleSheet("color: #bbdefb; font-size: 11px;")
-        self.auto_sync_startup_cb.setChecked(getattr(self.controller, "get_auto_sync_startup", lambda: False)())
-        self.auto_sync_startup_cb.toggled.connect(self._handle_toggle_auto_sync_startup)
+        # Left Column: Stock Table & Filtering
+        left_widget = QWidget()
+        left_col = QVBoxLayout(left_widget)
+        left_col.setContentsMargins(0, 0, 4, 0)
+        left_col.setSpacing(6)
 
-        self.check_update_btn = QPushButton("🔄 Check Updates")
-        self.check_update_btn.setStyleSheet("background-color: #37474f; color: white; font-size: 11px;")
-        self.check_update_btn.clicked.connect(lambda: self._handle_check_updates(silent=False))
-
-        sched_banner.addWidget(self.cloud_sync_btn)
-        sched_banner.addWidget(self.auto_sync_startup_cb)
-        sched_banner.addWidget(self.auto_sched_btn)
-        sched_banner.addWidget(self.sync_all_btn)
-        sched_banner.addWidget(self.check_update_btn)
-        left_layout.addLayout(sched_banner)
-
-        # Filter & Action Row
-        action_row = QHBoxLayout()
+        filter_bar = QHBoxLayout()
+        filter_bar.addWidget(QLabel("Filter:"))
         self.filter_combo = QComboBox()
         self.filter_combo.addItems(["All Listed Stocks", "Entry Signals Only", "Core Watchlist"])
         self.filter_combo.currentTextChanged.connect(self._handle_filter_change)
+        filter_bar.addWidget(self.filter_combo)
 
         self.ticker_input = QLineEdit()
         self.ticker_input.setPlaceholderText("Symbol (e.g. UPPER)")
+        filter_bar.addWidget(self.ticker_input)
+
         self.add_btn = QPushButton("Add")
+        self.add_btn.setStyleSheet("background-color: #243542; color: #90caf9;")
         self.add_btn.clicked.connect(self._handle_add_ticker)
+        filter_bar.addWidget(self.add_btn)
 
-        self.run_btn = QPushButton("▶ Run Screen")
-        self.run_btn.setStyleSheet("background-color: #2e7d32; color: white;")
+        self.run_btn = QPushButton("▶ Run Screener")
+        self.run_btn.setStyleSheet("background-color: #00796b; color: white;")
         self.run_btn.clicked.connect(self._handle_run_screener)
-
-        action_row.addWidget(QLabel("View:"))
-        action_row.addWidget(self.filter_combo)
-        action_row.addWidget(self.ticker_input)
-        action_row.addWidget(self.add_btn)
-        action_row.addWidget(self.run_btn)
-        left_layout.addLayout(action_row)
+        filter_bar.addWidget(self.run_btn)
+        left_col.addLayout(filter_bar)
 
         # Watchlist Table
         self.table = QTableWidget()
         self.table.setColumnCount(6)
         self.table.setHorizontalHeaderLabels([
-            "Symbol", "LTP (NPR)", "Chg %", "RSI(14)", "Vol Z-Score", "Signal Status"
+            "Symbol", "LTP (Rs.)", "Chg %", "RSI(14)", "Vol Z-Score", "Signal Setup"
         ])
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         self.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.table.setSelectionMode(QTableWidget.SelectionMode.SingleSelection)
         self.table.itemSelectionChanged.connect(self._handle_table_selection)
-        left_layout.addWidget(self.table)
+        left_col.addWidget(self.table)
 
         # Progress bar
         self.progress_bar = QProgressBar()
         self.progress_bar.setValue(0)
         self.progress_bar.setVisible(False)
-        left_layout.addWidget(self.progress_bar)
+        left_col.addWidget(self.progress_bar)
 
-        # Detail & Log Box
-        log_label = QLabel("Scheduler Activity & Technical Log:")
-        left_layout.addWidget(log_label)
-        self.log_box = QTextEdit()
-        self.log_box.setReadOnly(True)
-        self.log_box.setMaximumHeight(140)
-        left_layout.addWidget(self.log_box)
-
-        # === RIGHT PANEL: EMBEDDED TRADINGVIEW & MATPLOTLIB CHARTS ===
+        # Right Column: Chart Canvas & TradingView WebEngine
         right_widget = QWidget()
-        right_layout = QVBoxLayout(right_widget)
-        right_layout.setContentsMargins(8, 8, 8, 8)
+        right_col = QVBoxLayout(right_widget)
+        right_col.setContentsMargins(4, 0, 0, 0)
+        right_col.setSpacing(6)
 
-        chart_header = QHBoxLayout()
-        self.chart_title_label = QLabel("Technical Analysis & Signal Verification")
-        self.chart_title_label.setStyleSheet("font-size: 13px; font-weight: bold; color: #ffffff;")
-        chart_header.addWidget(self.chart_title_label)
-        chart_header.addStretch()
+        chart_bar = QHBoxLayout()
+        self.chart_title_label = QLabel("Technical Verification")
+        self.chart_title_label.setFont(QFont("Arial", 11, QFont.Weight.Bold))
+        chart_bar.addWidget(self.chart_title_label)
+        chart_bar.addStretch()
 
         self.chart_mode_combo = QComboBox()
         self.chart_mode_combo.addItems(["Classic (Matplotlib)", "TradingView (Interactive)"])
         self.chart_mode_combo.currentTextChanged.connect(self._handle_chart_mode_change)
-
-        chart_header.addWidget(QLabel("Engine:"))
-        chart_header.addWidget(self.chart_mode_combo)
+        chart_bar.addWidget(QLabel("Engine:"))
+        chart_bar.addWidget(self.chart_mode_combo)
 
         self.browser_btn = QPushButton("↗ Open in Browser")
-        self.browser_btn.setStyleSheet("background-color: #37474f; color: #80d8ff; font-weight: bold; font-size: 11px;")
+        self.browser_btn.setStyleSheet("background-color: #21262d; color: #80d8ff; font-size: 11px;")
         self.browser_btn.clicked.connect(self._handle_open_tradingview)
-        chart_header.addWidget(self.browser_btn)
-
-        right_layout.addLayout(chart_header)
+        chart_bar.addWidget(self.browser_btn)
+        right_col.addLayout(chart_bar)
 
         self.chart_stack = QStackedWidget()
-
-        if WEBENGINE_AVAILABLE:
-            self.web_view = QWebEngineView()
-            self.chart_stack.addWidget(self.web_view)
-
         self.canvas = ChartCanvas(self, width=8, height=7)
         self.chart_stack.addWidget(self.canvas)
+        right_col.addWidget(self.chart_stack)
 
-        right_layout.addWidget(self.chart_stack)
-
-        # Add both panels to splitter
         splitter.addWidget(left_widget)
         splitter.addWidget(right_widget)
-        splitter.setSizes([540, 910])
+        splitter.setSizes([560, 890])
+        self.tab_widget.addTab(screener_tab, "📊 Screener & Charts")
+
+        # -----------------------------------------------------------------
+        # TAB 2: 🧠 MARKET PSYCHOLOGY & BREADTH
+        # -----------------------------------------------------------------
+        psychology_tab = QWidget()
+        psy_layout = QVBoxLayout(psychology_tab)
+        psy_layout.setContentsMargins(14, 14, 14, 14)
+        psy_layout.setSpacing(12)
+
+        # Metrics Summary Cards
+        cards_row = QHBoxLayout()
+
+        self.card_fg = QGroupBox("Retail Fear & Greed Index")
+        card_fg_lay = QVBoxLayout(self.card_fg)
+        self.fg_score_lbl = QLabel("-- / 100")
+        self.fg_score_lbl.setFont(QFont("Arial", 20, QFont.Weight.Bold))
+        self.fg_score_lbl.setStyleSheet("color: #00e676;")
+        self.fg_label_lbl = QLabel("Calculating...")
+        self.fg_label_lbl.setStyleSheet("color: #b0bec5; font-size: 12px;")
+        card_fg_lay.addWidget(self.fg_score_lbl)
+        card_fg_lay.addWidget(self.fg_label_lbl)
+        cards_row.addWidget(self.card_fg)
+
+        self.card_breadth = QGroupBox("Daily Market Breadth (Advances vs Declines)")
+        card_br_lay = QVBoxLayout(self.card_breadth)
+        self.breadth_counts_lbl = QLabel("Advances: -- | Declines: -- | Unchanged: --")
+        self.breadth_counts_lbl.setFont(QFont("Arial", 12, QFont.Weight.Bold))
+        self.breadth_ratio_lbl = QLabel("A/D Ratio: --")
+        self.breadth_ratio_lbl.setStyleSheet("color: #90caf9; font-size: 11px;")
+        card_br_lay.addWidget(self.breadth_counts_lbl)
+        card_br_lay.addWidget(self.breadth_ratio_lbl)
+        cards_row.addWidget(self.card_breadth)
+
+        self.card_circuit = QGroupBox("Circuit Breakers & Turnover")
+        card_cir_lay = QVBoxLayout(self.card_circuit)
+        self.circuit_counts_lbl = QLabel("Upper (+10%): -- | Lower (-10%): --")
+        self.circuit_counts_lbl.setFont(QFont("Arial", 12, QFont.Weight.Bold))
+        self.turnover_lbl = QLabel("Total Turnover: Rs. --")
+        self.turnover_lbl.setStyleSheet("color: #ffb74d; font-size: 11px;")
+        card_cir_lay.addWidget(self.circuit_counts_lbl)
+        card_cir_lay.addWidget(self.turnover_lbl)
+        cards_row.addWidget(self.card_circuit)
+
+        psy_layout.addLayout(cards_row)
+
+        # Historical Psychology Table
+        psy_history_box = QGroupBox("Historical Market Psychology & Breadth Index (Past Sessions)")
+        psy_hist_lay = QVBoxLayout(psy_history_box)
+
+        psy_btn_bar = QHBoxLayout()
+        psy_refresh_btn = QPushButton("🔄 Refresh Psychology")
+        psy_refresh_btn.setStyleSheet("background-color: #243542; color: #90caf9; font-size: 11px;")
+        psy_refresh_btn.clicked.connect(self._populate_psychology_tab)
+        psy_btn_bar.addStretch()
+        psy_btn_bar.addWidget(psy_refresh_btn)
+        psy_hist_lay.addLayout(psy_btn_bar)
+
+        self.psychology_table = QTableWidget()
+        self.psychology_table.setColumnCount(8)
+        self.psychology_table.setHorizontalHeaderLabels([
+            "Date", "Fear & Greed", "Advances", "Declines", "Unchanged", "A/D Ratio", "Upper Circuits", "Turnover (Rs.)"
+        ])
+        self.psychology_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        psy_hist_lay.addWidget(self.psychology_table)
+        psy_layout.addWidget(psy_history_box)
+
+        self.tab_widget.addTab(psychology_tab, "🧠 Market Psychology")
+
+        # -----------------------------------------------------------------
+        # TAB 3: 📰 FINANCIAL NEWS & POLICY
+        # -----------------------------------------------------------------
+        news_tab = QWidget()
+        news_layout = QVBoxLayout(news_tab)
+        news_layout.setContentsMargins(14, 14, 14, 14)
+        news_layout.setSpacing(10)
+
+        news_header = QHBoxLayout()
+        news_header.addWidget(QLabel("Real-Time Financial Headlines, NRB Directives & Disclosures"))
+        news_header.addStretch()
+
+        self.news_refresh_btn = QPushButton("🔄 Fetch Latest News")
+        self.news_refresh_btn.setStyleSheet("background-color: #243542; color: #90caf9;")
+        self.news_refresh_btn.clicked.connect(self._handle_fetch_news)
+        news_header.addWidget(self.news_refresh_btn)
+        news_layout.addLayout(news_header)
+
+        self.news_table = QTableWidget()
+        self.news_table.setColumnCount(5)
+        self.news_table.setHorizontalHeaderLabels([
+            "Date / Time", "Source", "Category", "Sentiment", "Article Headline"
+        ])
+        self.news_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
+        self.news_table.horizontalHeader().setSectionResizeMode(4, QHeaderView.ResizeMode.Stretch)
+        self.news_table.setColumnWidth(0, 140)
+        self.news_table.setColumnWidth(1, 160)
+        self.news_table.setColumnWidth(2, 160)
+        self.news_table.setColumnWidth(3, 100)
+        news_layout.addWidget(self.news_table)
+
+        self.tab_widget.addTab(news_tab, "📰 Daily News")
+
+        # -----------------------------------------------------------------
+        # TAB 4: ⚙ SETTINGS & CLOUD SYNC
+        # -----------------------------------------------------------------
+        settings_tab = QWidget()
+        settings_layout = QVBoxLayout(settings_tab)
+        settings_layout.setContentsMargins(14, 14, 14, 14)
+        settings_layout.setSpacing(12)
+
+        # Cloud Sync Group
+        sync_group = QGroupBox("GitHub Cloud Sync & Market Universe")
+        sync_lay = QHBoxLayout(sync_group)
+
+        self.cloud_sync_btn = QPushButton("☁ Sync Cloud (GitHub)")
+        self.cloud_sync_btn.setStyleSheet("background-color: #5c6bc0; color: white;")
+        self.cloud_sync_btn.clicked.connect(getattr(self, "_handle_cloud_sync", lambda: None))
+        sync_lay.addWidget(self.cloud_sync_btn)
+
+        self.auto_sync_startup_cb = QCheckBox("Auto-sync database on startup")
+        self.auto_sync_startup_cb.setStyleSheet("color: #bbdefb; font-size: 12px;")
+        self.auto_sync_startup_cb.setChecked(getattr(self.controller, "get_auto_sync_startup", lambda: False)())
+        self.auto_sync_startup_cb.toggled.connect(getattr(self, "_handle_toggle_auto_sync_startup", lambda checked: None))
+        sync_lay.addWidget(self.auto_sync_startup_cb)
+
+        self.sync_all_btn = QPushButton("Sync All 300+ Stocks")
+        self.sync_all_btn.setStyleSheet("background-color: #37474f; color: white;")
+        self.sync_all_btn.clicked.connect(self._handle_sync_all)
+        sync_lay.addWidget(self.sync_all_btn)
+        sync_lay.addStretch()
+        settings_layout.addWidget(sync_group)
+
+        # Automation Daemon & Updates Group
+        daemon_group = QGroupBox("Automated Market Daemon & App Updates")
+        daemon_lay = QHBoxLayout(daemon_group)
+
+        self.auto_sched_btn = QPushButton("▶ Enable Auto-Scraping Daemon (10:45–2:45 NPT)")
+        self.auto_sched_btn.setStyleSheet("background-color: #00796b; color: white;")
+        self.auto_sched_btn.clicked.connect(self._toggle_auto_scheduler)
+        daemon_lay.addWidget(self.auto_sched_btn)
+
+        self.check_update_btn = QPushButton("🔄 Check for Updates")
+        self.check_update_btn.setStyleSheet("background-color: #37474f; color: white;")
+        self.check_update_btn.clicked.connect(lambda: self._handle_check_updates(silent=False))
+        daemon_lay.addWidget(self.check_update_btn)
+        daemon_lay.addStretch()
+        settings_layout.addWidget(daemon_group)
+
+        # System Logs Group
+        log_group = QGroupBox("System Activity & Execution Logs")
+        log_lay = QVBoxLayout(log_group)
+        self.log_box = QTextEdit()
+        self.log_box.setReadOnly(True)
+        log_lay.addWidget(self.log_box)
+        settings_layout.addWidget(log_group)
+
+        self.tab_widget.addTab(settings_tab, "⚙ Settings & Sync")
 
         # Status Bar
         self.status_bar = QStatusBar()
+        self.status_bar.setStyleSheet("background-color: #111417; color: #9aa0a6; font-size: 11px;")
         self.setStatusBar(self.status_bar)
-        self.status_bar.showMessage("Ready. Select a ticker or activate auto-scraping.")
-
-        # Initial populate deferred to event loop for instant window display
-        self._update_market_clock_display()
+        self.status_bar.showMessage("Ready.")
 
     def _update_market_clock_display(self):
-        """Updates the live NPT clock and market operational status badge."""
-        now_npt = self.controller.calendar.now_npt()
-        is_open, reason = self.controller.get_market_status()
+        cal = self.controller.calendar
+        now_npt = cal.now_npt()
         time_str = now_npt.strftime("%I:%M:%S %p NPT")
+        date_str = now_npt.strftime("%A, %b %d")
 
+        is_open, reason = self.controller.get_market_status()
         if is_open:
-            self.market_status_badge.setText(f"🟢 MARKET OPEN ({time_str})")
-            self.market_status_badge.setStyleSheet("color: #69f0ae; font-weight: bold; font-size: 11px;")
+            self.market_status_badge.setText(f"🟢 OPEN | {date_str} {time_str}")
+            self.market_status_badge.setStyleSheet("color: #00e676; font-weight: bold; background-color: #1b2e22; padding: 4px 10px; border-radius: 4px;")
         else:
-            self.market_status_badge.setText(f"🔴 MARKET CLOSED ({time_str})")
-            self.market_status_badge.setStyleSheet("color: #ff5252; font-weight: bold; font-size: 11px;")
+            self.market_status_badge.setText(f"🔴 CLOSED | {date_str} {time_str}")
+            self.market_status_badge.setStyleSheet("color: #ff5252; font-weight: bold; background-color: #2b1d1d; padding: 4px 10px; border-radius: 4px;")
 
     def _toggle_auto_scheduler(self):
-        """Toggles automated background scraping between 10:45 and 14:45 NPT."""
-        if self.controller.scheduler and self.controller.scheduler.isRunning():
-            self.controller.stop_automated_scheduler()
-            self.auto_sched_btn.setText("▶ Enable Auto-Scraping (10:45-2:45 NPT)")
+        if self.controller.is_scheduler_running():
+            self.controller.stop_scheduler()
+            self.auto_sched_btn.setText("▶ Enable Auto-Scraping Daemon (10:45–2:45 NPT)")
             self.auto_sched_btn.setStyleSheet("background-color: #00796b; color: white;")
-            self.log_box.append("Automated NEPSE Scheduler paused by user.")
-            self.status_bar.showMessage("Auto-scheduler paused.")
+            self.log_box.append("[Scheduler] Automated market daemon stopped.")
+            self.status_bar.showMessage("Automated scheduler paused.", 4000)
         else:
-            self.auto_sched_btn.setText("⏹ Stop Auto-Scraping")
-            self.auto_sched_btn.setStyleSheet("background-color: #c62828; color: white;")
-            self.log_box.append("Automated NEPSE Scheduler started. Active Mon-Fri 10:45-14:45 NPT.")
+            self.auto_sched_btn.setText("⏹ Stop Auto-Scraper Daemon")
+            self.auto_sched_btn.setStyleSheet("background-color: #d32f2f; color: white;")
+            self.log_box.append("[Scheduler] Automated market daemon active. Polling during trading window.")
+            self.status_bar.showMessage("Automated scheduler active.", 4000)
 
             def on_status(msg):
-                self.status_bar.showMessage(msg)
-                self.log_box.append(f"[Scheduler] {msg}")
+                self.status_bar.showMessage(msg, 3000)
+                self.log_box.append(f"[Live] {msg}")
 
             def on_ticker(sym, res):
-                if res.get("is_entry_signal"):
-                    self.log_box.append(
-                        f"★ [ENTRY ALERT] {sym} @ Rs. {res['close']:.2f} | RSI: {res['rsi_14']:.1f} | Vol Z: {res['vol_zscore']:+.1f}σ"
-                    )
+                for row in range(self.table.rowCount()):
+                    item = self.table.item(row, 0)
+                    if item and item.text() == sym:
+                        self._update_table_row(row, sym, res)
+                        break
 
             def on_cycle_finished(results):
+                self.log_box.append(f"[Scheduler Cycle] Finished processing {len(results)} stocks.")
                 self._populate_table_from_cache()
 
             def on_holiday(msg):
-                self.log_box.append(f"[Market Exception] {msg}")
+                self.log_box.append(f"[Market Holiday] {msg}")
 
-            self.controller.start_automated_scheduler(
+            self.controller.start_scheduler(
+                poll_interval_minutes=1,
                 on_status=on_status,
                 on_ticker=on_ticker,
                 on_cycle_finished=on_cycle_finished,
@@ -319,14 +499,19 @@ class NepseScreenerMainWindow(QMainWindow):
             )
 
     def _handle_sync_all(self):
-        """Scrapes and registers all NEPSE stocks into the database."""
         self.sync_all_btn.setEnabled(False)
         self.log_box.append("Discovering and syncing all listed NEPSE securities...")
-        
+
         def run_sync():
             count, msg = self.controller.sync_all_nepse_stocks()
             self.log_box.append(f"[Sync Complete] {msg}")
+            _, p_msg = self.controller.sync_daily_market_psychology()
+            self.log_box.append(f"[Psychology] {p_msg}")
+            _, n_msg = self.controller.sync_daily_news()
+            self.log_box.append(f"[News] {n_msg}")
             self._populate_table_from_cache()
+            self._populate_psychology_tab()
+            self._populate_news_tab()
             self.sync_all_btn.setEnabled(True)
 
         QTimer.singleShot(100, run_sync)
@@ -336,7 +521,6 @@ class NepseScreenerMainWindow(QMainWindow):
         self._populate_table_from_cache()
 
     def _populate_table_from_cache(self):
-        """Loads and filters the table based on current user selection."""
         all_symbols = self.controller.get_watchlist()
         latest_df = self.controller.get_latest_signals_df()
 
@@ -345,7 +529,6 @@ class NepseScreenerMainWindow(QMainWindow):
             for _, row in latest_df.iterrows():
                 signal_map[row["symbol"]] = row.to_dict()
 
-        # Apply filtering
         display_symbols = []
         if self.current_filter == "Entry Signals Only":
             display_symbols = [s for s in all_symbols if signal_map.get(s, {}).get("is_entry_signal", False)]
@@ -361,10 +544,12 @@ class NepseScreenerMainWindow(QMainWindow):
             self._update_table_row(row_idx, symbol, data)
 
         if display_symbols:
-            self.table.selectRow(0)
+            target_row = 0
+            if self.selected_symbol and self.selected_symbol in display_symbols:
+                target_row = display_symbols.index(self.selected_symbol)
+            self.table.selectRow(target_row)
 
     def _update_table_row(self, row_idx: int, symbol: str, data: Dict[str, Any]):
-        """Populates and formats a single row in the watchlist table."""
         close = data.get("close", 0.0)
         chg = data.get("change_pct", 0.0)
         rsi = data.get("rsi_14", 0.0)
@@ -377,9 +562,9 @@ class NepseScreenerMainWindow(QMainWindow):
         item_close = QTableWidgetItem(f"{close:.2f}" if close else "--")
         item_chg = QTableWidgetItem(f"{chg:+.2f}%" if chg else "--")
         if chg > 0:
-            item_chg.setForeground(QBrush(QColor("#26a69a")))
+            item_chg.setForeground(QBrush(QColor("#00e676")))
         elif chg < 0:
-            item_chg.setForeground(QBrush(QColor("#ef5350")))
+            item_chg.setForeground(QBrush(QColor("#ff5252")))
 
         item_rsi = QTableWidgetItem(f"{rsi:.1f}" if rsi else "--")
         if rsi and rsi < 30.0:
@@ -398,19 +583,12 @@ class NepseScreenerMainWindow(QMainWindow):
         if is_entry:
             highlight = QColor(SIGNAL_HIGHLIGHT_COLOR)
             text_color = QColor(SIGNAL_TEXT_COLOR)
-            font_bold = QFont("Arial", 9, QFont.Weight.Bold)
-
             for item in (item_sym, item_close, item_chg, item_rsi, item_z, item_status):
                 item.setBackground(QBrush(highlight))
                 item.setForeground(QBrush(text_color))
-                item.setFont(font_bold)
 
-        self.table.setItem(row_idx, 0, item_sym)
-        self.table.setItem(row_idx, 1, item_close)
-        self.table.setItem(row_idx, 2, item_chg)
-        self.table.setItem(row_idx, 3, item_rsi)
-        self.table.setItem(row_idx, 4, item_z)
-        self.table.setItem(row_idx, 5, item_status)
+        for col_idx, item in enumerate([item_sym, item_close, item_chg, item_rsi, item_z, item_status]):
+            self.table.setItem(row_idx, col_idx, item)
 
     def _handle_table_selection(self):
         selected_rows = self.table.selectedItems()
@@ -421,71 +599,83 @@ class NepseScreenerMainWindow(QMainWindow):
         if not symbol_item:
             return
         symbol = symbol_item.text()
-        self.selected_symbol = symbol
-
-        df = self.controller.get_historical_data(symbol)
-        self._render_current_chart(symbol)
-        self.status_bar.showMessage(f"Loaded {symbol} chart.")
+        if symbol != self.selected_symbol:
+            self.selected_symbol = symbol
+            self._render_current_chart(symbol)
 
     def _handle_add_ticker(self):
-        sym = self.ticker_input.text().strip().upper()
-        if not sym:
+        raw = self.ticker_input.text().strip().upper()
+        if not raw:
             return
-        self.controller.add_ticker_to_watchlist(sym)
+        self.controller.add_ticker_to_watchlist(raw)
         self.ticker_input.clear()
+        self.log_box.append(f"[Watchlist] Added {raw} to universe.")
         self._populate_table_from_cache()
-        self.status_bar.showMessage(f"Added {sym} to watchlist.")
 
     def _handle_run_screener(self):
         self.run_btn.setEnabled(False)
         self.progress_bar.setVisible(True)
         self.progress_bar.setValue(0)
-        self.log_box.append("Initiating calculation pipeline across displayed stocks...")
-
-        symbols = [self.table.item(r, 0).text() for r in range(self.table.rowCount()) if self.table.item(r, 0)]
-        if not symbols:
-            symbols = self.controller.get_watchlist()
+        self.log_box.append("Initiating quantitative multi-factor screening across universe...")
 
         def on_started():
-            self.status_bar.showMessage("Screening stocks in background thread...")
+            self.status_bar.showMessage("Screening active universe...")
 
         def on_ticker_done(symbol: str, res: dict):
-            for row_idx in range(self.table.rowCount()):
-                item = self.table.item(row_idx, 0)
+            for row in range(self.table.rowCount()):
+                item = self.table.item(row, 0)
                 if item and item.text() == symbol:
-                    self._update_table_row(row_idx, symbol, res)
+                    self._update_table_row(row, symbol, res)
                     break
-            
             if res.get("is_entry_signal"):
-                self.log_box.append(
-                    f"★ [ENTRY SIGNAL] {symbol} @ Rs. {res['close']:.2f} | "
-                    f"RSI: {res['rsi_14']:.1f} | Vol Z: {res['vol_zscore']:+.1f}σ | {res['confirmation_notes']}"
-                )
+                self.log_box.append(f"🟢 [ENTRY SETUP] {symbol}: {res.get('confirmation_notes')}")
 
         def on_progress(current: int, total: int):
-            pct = int((current / total) * 100)
-            self.progress_bar.setValue(pct)
+            percent = int((current / max(total, 1)) * 100)
+            self.progress_bar.setValue(percent)
 
         def on_finished(results: list):
             self.run_btn.setEnabled(True)
             self.progress_bar.setVisible(False)
-            self.status_bar.showMessage(f"Screening complete. Evaluated {len(results)} symbols.")
-            self.log_box.append("=== Screening Finished ===")
-            if self.selected_symbol:
-                df = self.controller.get_historical_data(self.selected_symbol)
-                self._render_current_chart(self.selected_symbol)
+            self.status_bar.showMessage(f"Screener complete. Processed {len(results)} securities.", 5000)
+            self.log_box.append(f"Screener finished. {len(results)} securities processed.")
+            self._populate_table_from_cache()
+            self._populate_psychology_tab()
 
         def on_error(err_msg: str):
-            self.log_box.append(f"ERROR: {err_msg}")
+            self.run_btn.setEnabled(True)
+            self.progress_bar.setVisible(False)
+            self.status_bar.showMessage(f"Error: {err_msg}", 5000)
+            self.log_box.append(f"[Error] {err_msg}")
 
         self.controller.run_screener_async(
-            symbols=symbols,
             on_started=on_started,
             on_ticker_done=on_ticker_done,
             on_progress=on_progress,
             on_finished=on_finished,
             on_error=on_error
         )
+
+    def _deferred_startup(self):
+        self._update_market_clock_display()
+        self._populate_table_from_cache()
+        self._populate_psychology_tab()
+        self._populate_news_tab()
+        if self.controller.get_auto_sync_startup():
+            QTimer.singleShot(1500, self._handle_cloud_sync)
+        QTimer.singleShot(4000, lambda: self._handle_check_updates(silent=True))
+
+    def _ensure_web_view(self):
+        if getattr(self, "web_view", None) is None and WEBENGINE_AVAILABLE:
+            self.web_view = QWebEngineView()
+            try:
+                self.web_view.settings().setAttribute(QWebEngineSettings.WebAttribute.LocalContentCanAccessRemoteUrls, True)
+                self.web_view.settings().setAttribute(QWebEngineSettings.WebAttribute.LocalContentCanAccessFileUrls, True)
+                self.web_view.settings().setAttribute(QWebEngineSettings.WebAttribute.JavascriptEnabled, True)
+            except Exception as e:
+                logger.warning(f"WebEngine settings error: {e}")
+            self.chart_stack.addWidget(self.web_view)
+        return self.web_view
 
     def _handle_toggle_auto_sync_startup(self, checked: bool):
         self.controller.set_auto_sync_startup(checked)
@@ -531,6 +721,8 @@ class NepseScreenerMainWindow(QMainWindow):
             self.log_box.append(f"[Cloud Sync] {msg}")
             self.status_bar.showMessage("GitHub sync complete.", 5000)
             self._populate_table_from_cache()
+            self._populate_psychology_tab()
+            self._populate_news_tab()
         else:
             self.log_box.append(f"[Cloud Sync Info] {msg}")
             self.status_bar.showMessage("Local database active.", 5000)
@@ -556,37 +748,138 @@ class NepseScreenerMainWindow(QMainWindow):
     def _render_current_chart(self, symbol: str):
         df = self.controller.get_historical_data(symbol)
         if df.empty:
-            seed_df = self.controller.ingestion.generate_synthetic_history(symbol, n_days=260, base_price=420.0)
+            seed_df = self.controller.ingestion.generate_synthetic_history(symbol, n_days=260, base_price=450.0)
             self.controller.db.upsert_eod_data(symbol, seed_df)
             df = self.controller.get_historical_data(symbol)
+
+        self.chart_title_label.setText(f"{symbol} — Quantitative Technical Analysis")
 
         mode = self.chart_mode_combo.currentText()
         if "TradingView" in mode:
             try:
                 if getattr(self, "web_view", None) is None:
-                    from PyQt6.QtWebEngineWidgets import QWebEngineView
-                    from PyQt6.QtWebEngineCore import QWebEngineSettings
-                    self.web_view = QWebEngineView()
-                    try:
-                        self.web_view.settings().setAttribute(QWebEngineSettings.WebAttribute.LocalContentCanAccessRemoteUrls, True)
-                        self.web_view.settings().setAttribute(QWebEngineSettings.WebAttribute.LocalContentCanAccessFileUrls, True)
-                        self.web_view.settings().setAttribute(QWebEngineSettings.WebAttribute.JavascriptEnabled, True)
-                    except Exception as e:
-                        logger.warning(f"WebEngine settings error: {e}")
-                    self.chart_stack.addWidget(self.web_view)
+                    self._ensure_web_view()
 
                 from .chart_canvas import export_tradingview_html
                 out_file = export_tradingview_html(symbol, df)
-                self.web_view.setUrl(QUrl.fromLocalFile(str(out_file.resolve())))
-                self.chart_stack.setCurrentWidget(self.web_view)
-                return
+                if self.web_view:
+                    self.web_view.setUrl(QUrl.fromLocalFile(str(out_file.resolve())))
+                    self.chart_stack.setCurrentWidget(self.web_view)
+                    return
             except Exception as e:
-                err_msg = f"[TradingView Note] {e}. Falling back to Matplotlib."
+                err_msg = f"[TradingView Note] In-App WebEngine: {e}. Defaulting to Classic Matplotlib."
                 logger.warning(err_msg)
                 self.log_box.append(err_msg)
 
         self.canvas.plot_stock(symbol, df)
         self.chart_stack.setCurrentWidget(self.canvas)
+
+    def _populate_psychology_tab(self):
+        """Populates Market Psychology & Breadth cards and historical table."""
+        try:
+            df = self.controller.db.get_market_psychology(limit=30)
+            if df.empty:
+                return
+
+            latest = df.iloc[0]
+            fg = float(latest.get("fear_greed_score", 50.0))
+            adv = int(latest.get("advances", 0))
+            dec = int(latest.get("declines", 0))
+            unc = int(latest.get("unchanged", 0))
+            ad_r = float(latest.get("ad_ratio", 1.0))
+            c_high = int(latest.get("circuit_high_count", 0))
+            c_low = int(latest.get("circuit_low_count", 0))
+            t_over = float(latest.get("total_turnover", 0.0))
+
+            # Update top cards
+            self.fg_score_lbl.setText(f"{fg:.1f} / 100")
+            if fg >= 70:
+                self.fg_score_lbl.setStyleSheet("color: #00e676; font-size: 20px; font-weight: bold;")
+                self.fg_label_lbl.setText("Extreme Greed / Euphoria")
+            elif fg >= 55:
+                self.fg_score_lbl.setStyleSheet("color: #69f0ae; font-size: 20px; font-weight: bold;")
+                self.fg_label_lbl.setText("Bullish Greed")
+            elif fg <= 30:
+                self.fg_score_lbl.setStyleSheet("color: #ff5252; font-size: 20px; font-weight: bold;")
+                self.fg_label_lbl.setText("Extreme Fear / Panic")
+            elif fg <= 45:
+                self.fg_score_lbl.setStyleSheet("color: #ff8a80; font-size: 20px; font-weight: bold;")
+                self.fg_label_lbl.setText("Bearish Fear")
+            else:
+                self.fg_score_lbl.setStyleSheet("color: #ffd54f; font-size: 20px; font-weight: bold;")
+                self.fg_label_lbl.setText("Neutral Market")
+
+            self.breadth_counts_lbl.setText(f"🟢 Advances: {adv} | 🔴 Declines: {dec} | ⚪ Unchanged: {unc}")
+            self.breadth_ratio_lbl.setText(f"Market Breadth Ratio (A/D): {ad_r:.2f}")
+
+            self.circuit_counts_lbl.setText(f"Upper (+10%): {c_high} | Lower (-10%): {c_low}")
+            self.turnover_lbl.setText(f"Session Turnover: Rs. {t_over:,.2f}")
+
+            # Populate table
+            self.psychology_table.setRowCount(len(df))
+            for r_idx, row in df.iterrows():
+                d_str = str(row.get("date", ""))
+                fg_val = f"{row.get('fear_greed_score', 0):.1f}"
+                ad_cnt = str(row.get("advances", 0))
+                dc_cnt = str(row.get("declines", 0))
+                un_cnt = str(row.get("unchanged", 0))
+                ad_rat = f"{row.get('ad_ratio', 0):.2f}"
+                cir_h = str(row.get("circuit_high_count", 0))
+                turn_s = f"Rs. {float(row.get('total_turnover', 0)):,.0f}"
+
+                for c_idx, val in enumerate([d_str, fg_val, ad_cnt, dc_cnt, un_cnt, ad_rat, cir_h, turn_s]):
+                    item = QTableWidgetItem(val)
+                    item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                    self.psychology_table.setItem(r_idx, c_idx, item)
+        except Exception as e:
+            logger.warning(f"Failed to populate psychology tab: {e}")
+
+    def _populate_news_tab(self):
+        """Populates Financial News & Policy Announcements table."""
+        try:
+            df = self.controller.db.get_recent_news(limit=50)
+            if df.empty:
+                return
+
+            self.news_table.setRowCount(len(df))
+            for r_idx, row in df.iterrows():
+                ts = str(row.get("timestamp", ""))
+                src = str(row.get("source", ""))
+                cat = str(row.get("category", "General"))
+                sent = float(row.get("sentiment_score", 0.0))
+                sent_str = f"{sent:+.2f}"
+                title = str(row.get("title", ""))
+
+                item_ts = QTableWidgetItem(ts)
+                item_src = QTableWidgetItem(src)
+                item_cat = QTableWidgetItem(cat)
+                item_sent = QTableWidgetItem(sent_str)
+                item_title = QTableWidgetItem(title)
+
+                item_sent.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                if sent > 0.15:
+                    item_sent.setForeground(QBrush(QColor("#00e676")))
+                elif sent < -0.15:
+                    item_sent.setForeground(QBrush(QColor("#ff5252")))
+
+                for c_idx, item in enumerate([item_ts, item_src, item_cat, item_sent, item_title]):
+                    self.news_table.setItem(r_idx, c_idx, item)
+        except Exception as e:
+            logger.warning(f"Failed to populate news tab: {e}")
+
+    def _handle_fetch_news(self):
+        self.news_refresh_btn.setEnabled(False)
+        self.status_bar.showMessage("Fetching latest financial news...")
+
+        def run_fetch():
+            from model.market_scraper import NepseNewsScraper
+            scraper = NepseNewsScraper(self.controller.db)
+            count = scraper.scrape_and_save_all_news()
+            self._populate_news_tab()
+            self.status_bar.showMessage(f"News refreshed: {count} articles stored.", 4000)
+            self.news_refresh_btn.setEnabled(True)
+
+        QTimer.singleShot(100, run_fetch)
 
 
 class CLIViewer:
@@ -595,7 +888,7 @@ class CLIViewer:
     def render_dashboard(controller, all_stocks: bool = False):
         import tabulate
         print("\n" + "=" * 90)
-        print("   NEPSE ALGORITHMIC SCREENER & AUTOMATED SCHEDULER (CLI DASHBOARD)")
+        print("   NEPSE ALGORITHMIC SCREENER & QUANTITATIVE SUITE (CLI DASHBOARD)")
         print("=" * 90)
 
         now_npt = controller.calendar.now_npt()
@@ -638,7 +931,7 @@ class CLIViewer:
         print(tabulate.tabulate(table_data, headers=headers, tablefmt="fancy_grid"))
 
         triggered = [r["symbol"] for r in results if r["is_entry_signal"]]
-        target_sym = triggered[0] if triggered else watchlist[0]
+        target_sym = triggered[0] if triggered else (watchlist[0] if watchlist else "NHPC")
 
         df = controller.get_historical_data(target_sym)
         canvas = ChartCanvas(width=10, height=7)
@@ -651,39 +944,34 @@ class CLIViewer:
 
     @staticmethod
     def run_scheduler_daemon(controller, poll_interval_minutes: int = 1):
-        """Runs the automated scraping scheduler as a foreground terminal daemon."""
-        print("\n" + "=" * 90)
-        print("   NEPSE AUTOMATED DATA SCRAPER & SCREENER DAEMON")
-        print("   Schedule: Monday - Friday | 10:45 AM - 02:45 PM NPT")
-        print("   Exceptions: Nepal Public Holidays & Market Closure Announcements")
-        print("=" * 90)
+        print("\n" + "=" * 80)
+        print(f"Starting NEPSE Scraper Daemon (Interval: {poll_interval_minutes}m)")
+        print("=" * 80)
 
         def on_status(msg):
-            print(f"[{NepseMarketCalendar.now_npt().strftime('%I:%M:%S %p NPT')}] {msg}")
+            print(f"[{datetime.now().strftime('%H:%M:%S')}] {msg}")
 
         def on_ticker(sym, res):
-            if res.get("is_entry_signal"):
-                print(f"  ★ [ENTRY ALERT] {sym} @ Rs. {res['close']:.2f} | RSI: {res['rsi_14']:.1f} | Vol Z: {res['vol_zscore']:+.1f}σ")
+            pass
 
         def on_cycle_finished(results):
-            triggered = [r for r in results if r.get("is_entry_signal")]
-            print(f"[{NepseMarketCalendar.now_npt().strftime('%I:%M:%S %p NPT')}] Cycle complete: {len(results)} stocks scraped, {len(triggered)} entry signals detected.")
+            print(f"[{datetime.now().strftime('%H:%M:%S')}] Cycle finished: {len(results)} stocks evaluated.")
 
         def on_holiday(msg):
-            print(f"[{NepseMarketCalendar.now_npt().strftime('%I:%M:%S %p NPT')}] [Market Inactive] {msg}")
+            print(f"[Holiday Notice] {msg}")
 
-        scheduler = controller.start_automated_scheduler(
+        controller.start_scheduler(
+            poll_interval_minutes=poll_interval_minutes,
             on_status=on_status,
             on_ticker=on_ticker,
             on_cycle_finished=on_cycle_finished,
-            on_holiday=on_holiday,
-            poll_interval_minutes=poll_interval_minutes
+            on_holiday=on_holiday
         )
 
         try:
             while True:
                 time.sleep(1)
         except KeyboardInterrupt:
-            print("\nStopping scheduler daemon...")
-            controller.stop_automated_scheduler()
-            print("Daemon stopped.")
+            print("\nShutting down scheduler daemon...")
+            controller.stop_scheduler()
+            print("Daemon safely stopped.")
