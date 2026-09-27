@@ -401,7 +401,7 @@ class NepseMarketCalendar:
 
         if not self.is_trading_day(now):
             day_name = now.strftime("%A")
-            return False, f"Non-trading day ({day_name}). Trading occurs Monday-Friday."
+            return False, f"Non-trading day ({day_name}). Trading occurs Sunday-Thursday."
 
         is_hol, hol_name = self.is_public_holiday(now)
         if is_hol:

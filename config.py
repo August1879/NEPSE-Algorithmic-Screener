@@ -50,7 +50,7 @@ SESSION_CLOSE_MINUTE = 0
 # Polling frequency while the market is live (in minutes)
 LIVE_POLL_INTERVAL_MINUTES = 5
 
-# Active Trading Days (0 = Mon, 1 = Tue, 2 = Wed, 3 = Thu, 4 = Fri)
+# Active Trading Days (6 = Sun, 0 = Mon, 1 = Tue, 2 = Wed, 3 = Thu)
 ACTIVE_TRADING_DAYS = [0, 1, 2, 3, 4]
 
 # GitHub Repository Sync Settings
