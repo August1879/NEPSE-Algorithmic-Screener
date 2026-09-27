@@ -191,7 +191,8 @@ class UpdateDialog(QDialog):
                 "Restarting",
                 "Update downloaded successfully!\n\nThe application will now close and restart with the latest version."
             )
-            QApplication.quit()
+            import os
+            os._exit(0)
         else:
             QMessageBox.warning(self, "Manual Restart Required", msg)
             self.accept()

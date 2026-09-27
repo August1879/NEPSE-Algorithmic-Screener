@@ -1,6 +1,7 @@
 """
 Auto-Updater Engine for NEPSE Algorithmic Screener.
-Checks GitHub Releases API, downloads assets in background, and self-restarts on Windows.
+Checks GitHub Releases API, downloads assets in background, waits for PID exit,
+and self-restarts cleanly on Windows.
 """
 import os
 import sys
@@ -15,7 +16,7 @@ import urllib.request
 
 logger = logging.getLogger(__name__)
 
-APP_VERSION = "1.5.1"
+APP_VERSION = "1.5.2"
 GITHUB_REPO = "August1879/NEPSE-Algorithmic-Screener"
 RELEASES_API_URL = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
 
@@ -80,8 +81,8 @@ def check_for_updates() -> Tuple[bool, Dict[str, Any]]:
 
 def apply_update_and_restart(zip_path: Path):
     """
-    Extracts downloaded zip to a staging directory, generates an updater script,
-    and restarts the application.
+    Extracts downloaded zip to a staging directory, generates an updater script
+    that waits for the current process PID to terminate, and restarts the application.
     """
     is_frozen = getattr(sys, "frozen", False)
     if not is_frozen:
@@ -90,6 +91,7 @@ def apply_update_and_restart(zip_path: Path):
 
     exe_path = Path(sys.executable).resolve()
     app_dir = exe_path.parent
+    current_pid = os.getpid()
 
     # Staging directory
     staging_dir = Path(tempfile.mkdtemp(prefix="nepse_update_stage_"))
@@ -102,18 +104,27 @@ def apply_update_and_restart(zip_path: Path):
     if len(subdirs) == 1 and (subdirs[0] / exe_path.name).exists():
         source_dir = subdirs[0]
 
-    # Create updater batch script
+    # Create robust updater batch script that waits for current process PID to exit
     batch_file = app_dir.parent / "nepse_updater.bat"
     bat_content = f"""@echo off
 title NEPSE Screener Auto-Updater
-echo Updating application to the latest version...
-timeout /t 2 /nobreak > nul
+echo Waiting for NEPSE Screener process to fully close...
+
+:wait_loop
+tasklist /FI "PID eq {current_pid}" 2>NUL | find /I "{current_pid}" >NUL
+if "%ERRORLEVEL%"=="0" (
+    timeout /t 1 /nobreak > nul
+    goto wait_loop
+)
+
+echo Applying update...
+timeout /t 1 /nobreak > nul
 
 xcopy /E /Y /I "{source_dir}" "{app_dir}" > nul
 if exist "{staging_dir}" rmdir /S /Q "{staging_dir}"
 if exist "{zip_path}" del /F /Q "{zip_path}"
 
-echo Starting new version...
+echo Starting updated version...
 start "" "{exe_path}"
 (goto) 2>nul & del "%~f0"
 exit
@@ -121,6 +132,6 @@ exit
     with open(batch_file, "w", encoding="utf-8") as f:
         f.write(bat_content)
 
-    # Launch detached batch process and exit
+    # Launch detached batch process
     subprocess.Popen(["cmd.exe", "/c", str(batch_file)], shell=True)
     return True, "Update script initialized. Restarting..."
