@@ -11,6 +11,7 @@ import time
 import logging
 from typing import Optional, Dict, Any, List
 import pandas as pd
+import numpy as np
 from datetime import datetime
 from model.ingestion import NepseMarketCalendar
 
@@ -334,7 +335,7 @@ class NepseScreenerMainWindow(QMainWindow):
         psy_btn_bar = QHBoxLayout()
         psy_refresh_btn = QPushButton("🔄 Refresh Psychology")
         psy_refresh_btn.setStyleSheet("background-color: #243542; color: #90caf9; font-size: 11px;")
-        psy_refresh_btn.clicked.connect(self._populate_psychology_tab)
+        psy_refresh_btn.clicked.connect(self._handle_refresh_psychology)
         psy_btn_bar.addStretch()
         psy_btn_bar.addWidget(psy_refresh_btn)
         psy_hist_lay.addLayout(psy_btn_bar)
@@ -560,11 +561,16 @@ class NepseScreenerMainWindow(QMainWindow):
         item_sym.setFont(QFont("Arial", 9, QFont.Weight.Bold))
 
         item_close = QTableWidgetItem(f"{close:.2f}" if close else "--")
-        item_chg = QTableWidgetItem(f"{chg:+.2f}%" if chg else "--")
-        if chg > 0:
-            item_chg.setForeground(QBrush(QColor("#00e676")))
-        elif chg < 0:
-            item_chg.setForeground(QBrush(QColor("#ff5252")))
+        if chg is not None and not (isinstance(chg, float) and np.isnan(chg)):
+            item_chg = QTableWidgetItem(f"{float(chg):+.2f}%")
+            if chg > 0:
+                item_chg.setForeground(QBrush(QColor("#00e676")))
+            elif chg < 0:
+                item_chg.setForeground(QBrush(QColor("#ff5252")))
+            else:
+                item_chg.setForeground(QBrush(QColor("#b0bec5")))
+        else:
+            item_chg = QTableWidgetItem("--")
 
         item_rsi = QTableWidgetItem(f"{rsi:.1f}" if rsi else "--")
         if rsi and rsi < 30.0:
@@ -779,6 +785,12 @@ class NepseScreenerMainWindow(QMainWindow):
         try:
             df = self.controller.db.get_market_psychology(limit=30)
             if df.empty:
+                from model.engine import NepsePsychologyEngine
+                engine = NepsePsychologyEngine(self.controller.db)
+                engine.backfill_history(limit_days=30)
+                df = self.controller.db.get_market_psychology(limit=30)
+
+            if df.empty:
                 return
 
             latest = df.iloc[0]
@@ -833,6 +845,14 @@ class NepseScreenerMainWindow(QMainWindow):
                     self.psychology_table.setItem(r_idx, c_idx, item)
         except Exception as e:
             logger.warning(f"Failed to populate psychology tab: {e}")
+
+    def _handle_refresh_psychology(self):
+        self.status_bar.showMessage("Calculating market breadth & sentiment...", 3000)
+        from model.engine import NepsePsychologyEngine
+        engine = NepsePsychologyEngine(self.controller.db)
+        engine.backfill_history(limit_days=30)
+        self._populate_psychology_tab()
+        self.status_bar.showMessage("Market psychology refreshed.", 4000)
 
     def _populate_news_tab(self):
         """Populates Financial News & Policy Announcements table."""

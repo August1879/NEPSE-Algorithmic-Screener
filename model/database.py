@@ -290,13 +290,15 @@ class DatabaseManager:
         """Fetches the most recent signal record for each ticker."""
         with self._get_connection() as conn:
             query = """
-                SELECT s.*
+                SELECT s.*,
+                       COALESCE(ROUND(((e.close - e.open) / e.open) * 100.0, 2), 0.0) AS change_pct
                 FROM signals s
                 INNER JOIN (
                     SELECT symbol, MAX(date) AS max_date
                     FROM signals
                     GROUP BY symbol
                 ) latest ON s.symbol = latest.symbol AND s.date = latest.max_date
+                LEFT JOIN eod_prices e ON s.symbol = e.symbol AND s.date = e.date
                 ORDER BY s.is_entry_signal DESC, s.symbol ASC
             """
             return pd.read_sql_query(query, conn)
