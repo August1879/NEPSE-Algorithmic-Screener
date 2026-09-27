@@ -161,10 +161,15 @@ class NepseScreenerMainWindow(QMainWindow):
         self.auto_sync_startup_cb.setChecked(getattr(self.controller, "get_auto_sync_startup", lambda: False)())
         self.auto_sync_startup_cb.toggled.connect(self._handle_toggle_auto_sync_startup)
 
+        self.check_update_btn = QPushButton("🔄 Check Updates")
+        self.check_update_btn.setStyleSheet("background-color: #37474f; color: white; font-size: 11px;")
+        self.check_update_btn.clicked.connect(lambda: self._handle_check_updates(silent=False))
+
         sched_banner.addWidget(self.cloud_sync_btn)
         sched_banner.addWidget(self.auto_sync_startup_cb)
         sched_banner.addWidget(self.auto_sched_btn)
         sched_banner.addWidget(self.sync_all_btn)
+        sched_banner.addWidget(self.check_update_btn)
         left_layout.addLayout(sched_banner)
 
         # Filter & Action Row
@@ -487,6 +492,36 @@ class NepseScreenerMainWindow(QMainWindow):
         status = "enabled" if checked else "disabled"
         self.status_bar.showMessage(f"Auto-sync on startup {status}.", 4000)
         self.log_box.append(f"Auto-sync on startup {status}.")
+
+    def _handle_check_updates(self, silent: bool = False):
+        if not silent:
+            self.status_bar.showMessage("Checking GitHub for updates...", 4000)
+            self.log_box.append("Checking GitHub Releases for application updates...")
+
+        from view.updater_dialog import UpdateCheckWorker, UpdateDialog
+        self._update_worker = UpdateCheckWorker()
+
+        def on_result(has_update: bool, info: dict):
+            if has_update:
+                self.log_box.append(f"[Update Available] Found {info.get('tag_name')} on GitHub.")
+                dlg = UpdateDialog(info, self)
+                dlg.exec()
+            else:
+                if not silent:
+                    from model.updater import APP_VERSION
+                    from PyQt6.QtWidgets import QMessageBox
+                    err = info.get("error")
+                    if err:
+                        QMessageBox.warning(self, "Update Check", f"Could not check for updates:\n{err}")
+                    else:
+                        QMessageBox.information(
+                            self,
+                            "Up to Date",
+                            f"You are running the latest version (v{APP_VERSION})."
+                        )
+
+        self._update_worker.result_signal.connect(on_result)
+        self._update_worker.start()
 
     def _handle_cloud_sync(self):
         self.log_box.append("Connecting to GitHub to download latest market database...")
