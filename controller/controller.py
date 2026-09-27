@@ -10,7 +10,8 @@ from config import DB_PATH, DEFAULT_WATCHLIST
 from model.database import DatabaseManager
 from model.engine import NepseTechnicalEngine
 from model.screener import NepseScreener
-from model.ingestion import NepseDataIngestion, NepseMarketCalendar, FullMarketScraper
+from model.ingestion import NepseDataIngestion, NepseMarketCalendar
+from model.full_market_scraper import FullMarketScraper, ALL_KNOWN_NEPSE_SYMBOLS
 from .worker import ScreenerWorker, NepseMarketScheduler
 
 
@@ -31,7 +32,7 @@ class AppController:
         existing_watchlist = self.db.get_watchlist()
         if not existing_watchlist:
             logger.info("Initializing database with default watchlist: %s", DEFAULT_WATCHLIST)
-            self.db.register_tickers(DEFAULT_WATCHLIST)
+            self.db.register_tickers(ALL_KNOWN_NEPSE_SYMBOLS)
             for sym in DEFAULT_WATCHLIST:
                 should_trigger = (sym in ["SHIVM", "NHPC"])
                 seed_df = self.ingestion.generate_synthetic_history(
