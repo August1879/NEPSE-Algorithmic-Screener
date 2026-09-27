@@ -26,13 +26,14 @@ try:
     from PyQt6.QtWebEngineWidgets import QWebEngineView
     from PyQt6.QtCore import QUrl
     WEBENGINE_AVAILABLE = True
-except ImportError:
+except Exception:
     WEBENGINE_AVAILABLE = False
 
 
 # Check PyQt6 / PySide6 availability
 try:
     from PyQt6.QtWidgets import (
+        QCheckBox,
         QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
         QSplitter, QTableWidget, QTableWidgetItem, QLabel, QPushButton, QStackedWidget,
         QLineEdit, QHeaderView, QProgressBar, QTextEdit, QStatusBar, QComboBox
@@ -61,6 +62,7 @@ class NepseScreenerMainWindow(QMainWindow):
         self.clock_timer = QTimer(self)
         self.clock_timer.timeout.connect(self._update_market_clock_display)
         self.clock_timer.start(1000)
+        QTimer.singleShot(0, self._populate_table_from_cache)
         QTimer.singleShot(600, self._handle_cloud_sync)
 
     def _init_ui(self):
@@ -154,7 +156,13 @@ class NepseScreenerMainWindow(QMainWindow):
         self.sync_all_btn.setStyleSheet("background-color: #455a64; color: white;")
         self.sync_all_btn.clicked.connect(self._handle_sync_all)
 
+        self.auto_sync_startup_cb = QCheckBox("Auto-sync on startup")
+        self.auto_sync_startup_cb.setStyleSheet("color: #bbdefb; font-size: 11px;")
+        self.auto_sync_startup_cb.setChecked(self.controller.get_auto_sync_startup())
+        self.auto_sync_startup_cb.toggled.connect(self._handle_toggle_auto_sync_startup)
+
         sched_banner.addWidget(self.cloud_sync_btn)
+        sched_banner.addWidget(self.auto_sync_startup_cb)
         sched_banner.addWidget(self.auto_sched_btn)
         sched_banner.addWidget(self.sync_all_btn)
         left_layout.addLayout(sched_banner)
@@ -219,14 +227,17 @@ class NepseScreenerMainWindow(QMainWindow):
         chart_header.addStretch()
 
         self.chart_mode_combo = QComboBox()
-        if WEBENGINE_AVAILABLE:
-            self.chart_mode_combo.addItems(["TradingView (Interactive)", "Classic (Matplotlib)"])
-        else:
-            self.chart_mode_combo.addItems(["Classic (Matplotlib)"])
+        self.chart_mode_combo.addItems(["Classic (Matplotlib)", "TradingView (Interactive)"])
         self.chart_mode_combo.currentTextChanged.connect(self._handle_chart_mode_change)
 
         chart_header.addWidget(QLabel("Engine:"))
         chart_header.addWidget(self.chart_mode_combo)
+
+        self.browser_btn = QPushButton("↗ Open in Browser")
+        self.browser_btn.setStyleSheet("background-color: #37474f; color: #80d8ff; font-weight: bold; font-size: 11px;")
+        self.browser_btn.clicked.connect(self._handle_open_tradingview)
+        chart_header.addWidget(self.browser_btn)
+
         right_layout.addLayout(chart_header)
 
         self.chart_stack = QStackedWidget()
@@ -250,9 +261,8 @@ class NepseScreenerMainWindow(QMainWindow):
         self.setStatusBar(self.status_bar)
         self.status_bar.showMessage("Ready. Select a ticker or activate auto-scraping.")
 
-        # Initial populate
+        # Initial populate deferred to event loop for instant window display
         self._update_market_clock_display()
-        self._populate_table_from_cache()
 
     def _update_market_clock_display(self):
         """Updates the live NPT clock and market operational status badge."""
@@ -345,7 +355,7 @@ class NepseScreenerMainWindow(QMainWindow):
             data = signal_map.get(symbol, {})
             self._update_table_row(row_idx, symbol, data)
 
-        if display_symbols and not self.selected_symbol:
+        if display_symbols:
             self.table.selectRow(0)
 
     def _update_table_row(self, row_idx: int, symbol: str, data: Dict[str, Any]):
@@ -472,6 +482,77 @@ class NepseScreenerMainWindow(QMainWindow):
             on_error=on_error
         )
 
+    def _handle_toggle_auto_sync_startup(self, checked: bool):
+        self.controller.set_auto_sync_startup(checked)
+        status = "enabled" if checked else "disabled"
+        self.status_bar.showMessage(f"Auto-sync on startup {status}.", 4000)
+        self.log_box.append(f"Auto-sync on startup {status}.")
+
+    def _handle_cloud_sync(self):
+        self.log_box.append("Connecting to GitHub to download latest market database...")
+        self.status_bar.showMessage("Syncing from GitHub...")
+        success, msg = self.controller.sync_from_cloud()
+        if success:
+            self.log_box.append(f"[Cloud Sync] {msg}")
+            self.status_bar.showMessage("GitHub sync complete.", 5000)
+            self._populate_table_from_cache()
+        else:
+            self.log_box.append(f"[Cloud Sync Info] {msg}")
+            self.status_bar.showMessage("Local database active.", 5000)
+
+    def _handle_open_tradingview(self):
+        wl = self.controller.get_watchlist()
+        sym = self.selected_symbol or (wl[0] if wl else "NHPC")
+        self.selected_symbol = sym
+        df = self.controller.get_historical_data(sym)
+        if df.empty:
+            seed_df = self.controller.ingestion.generate_synthetic_history(sym, n_days=260, base_price=420.0)
+            self.controller.db.upsert_eod_data(sym, seed_df)
+            df = self.controller.get_historical_data(sym)
+        from .chart_canvas import open_tradingview_chart
+        out_file = open_tradingview_chart(sym, df)
+        self.log_box.append(f"[TradingView] Opened interactive chart for {sym} ({out_file.name})")
+        self.status_bar.showMessage(f"Launched TradingView chart for {sym} in browser.", 5000)
+
+    def _handle_chart_mode_change(self, mode: str):
+        if self.selected_symbol:
+            self._render_current_chart(self.selected_symbol)
+
+    def _render_current_chart(self, symbol: str):
+        df = self.controller.get_historical_data(symbol)
+        if df.empty:
+            seed_df = self.controller.ingestion.generate_synthetic_history(symbol, n_days=260, base_price=420.0)
+            self.controller.db.upsert_eod_data(symbol, seed_df)
+            df = self.controller.get_historical_data(symbol)
+
+        mode = self.chart_mode_combo.currentText()
+        if "TradingView" in mode:
+            try:
+                if getattr(self, "web_view", None) is None:
+                    from PyQt6.QtWebEngineWidgets import QWebEngineView
+                    from PyQt6.QtWebEngineCore import QWebEngineSettings
+                    self.web_view = QWebEngineView()
+                    try:
+                        self.web_view.settings().setAttribute(QWebEngineSettings.WebAttribute.LocalContentCanAccessRemoteUrls, True)
+                        self.web_view.settings().setAttribute(QWebEngineSettings.WebAttribute.LocalContentCanAccessFileUrls, True)
+                        self.web_view.settings().setAttribute(QWebEngineSettings.WebAttribute.JavascriptEnabled, True)
+                    except Exception as e:
+                        logger.warning(f"WebEngine settings error: {e}")
+                    self.chart_stack.addWidget(self.web_view)
+
+                from .chart_canvas import export_tradingview_html
+                out_file = export_tradingview_html(symbol, df)
+                self.web_view.setUrl(QUrl.fromLocalFile(str(out_file.resolve())))
+                self.chart_stack.setCurrentWidget(self.web_view)
+                return
+            except Exception as e:
+                err_msg = f"[TradingView Note] {e}. Falling back to Matplotlib."
+                logger.warning(err_msg)
+                self.log_box.append(err_msg)
+
+        self.canvas.plot_stock(symbol, df)
+        self.chart_stack.setCurrentWidget(self.canvas)
+
 
 class CLIViewer:
     """Console / Terminal viewer used for headless environments and daemon modes."""
@@ -567,35 +648,3 @@ class CLIViewer:
             print("\nStopping scheduler daemon...")
             controller.stop_automated_scheduler()
             print("Daemon stopped.")
-
-    def _handle_cloud_sync(self):
-        self.log_box.append("Connecting to GitHub to download latest market database...")
-        self.status_bar.showMessage("Syncing from GitHub...")
-        success, msg = self.controller.sync_from_cloud()
-        if success:
-            self.log_box.append(f"[Cloud Sync] {msg}")
-            self.status_bar.showMessage("GitHub sync complete.", 5000)
-            self._load_table_data()
-        else:
-            self.log_box.append(f"[Cloud Sync Info] {msg}")
-            self.status_bar.showMessage("Local database active.", 5000)
-
-    def _handle_chart_mode_change(self, mode: str):
-        if self.selected_symbol:
-            self._render_current_chart(self.selected_symbol)
-
-    def _render_current_chart(self, symbol: str):
-        df = self.controller.get_historical_data(symbol)
-        if df.empty:
-            return
-
-        mode = self.chart_mode_combo.currentText()
-        if "TradingView" in mode and getattr(self, "web_view", None) is not None:
-            from .chart_canvas import export_tradingview_html
-            out_file = export_tradingview_html(symbol, df)
-            self.web_view.setUrl(QUrl.fromLocalFile(str(out_file.resolve())))
-            self.chart_stack.setCurrentIndex(0)
-        else:
-            self._render_current_chart(symbol)
-            idx = 1 if getattr(self, "web_view", None) is not None else 0
-            self.chart_stack.setCurrentIndex(idx)
