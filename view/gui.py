@@ -158,7 +158,7 @@ class NepseScreenerMainWindow(QMainWindow):
 
         self.auto_sync_startup_cb = QCheckBox("Auto-sync on startup")
         self.auto_sync_startup_cb.setStyleSheet("color: #bbdefb; font-size: 11px;")
-        self.auto_sync_startup_cb.setChecked(self.controller.get_auto_sync_startup())
+        self.auto_sync_startup_cb.setChecked(getattr(self.controller, "get_auto_sync_startup", lambda: False)())
         self.auto_sync_startup_cb.toggled.connect(self._handle_toggle_auto_sync_startup)
 
         sched_banner.addWidget(self.cloud_sync_btn)

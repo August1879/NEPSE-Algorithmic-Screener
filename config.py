@@ -69,3 +69,33 @@ SIGNAL_TEXT_COLOR = "#155724"
 # Cloud Sync Configuration (GitHub Raw Database URL)
 GITHUB_RAW_DB_URL = "https://raw.githubusercontent.com/August1879/NEPSE-Algorithmic-Screener/main/data/nepse_cache.db"
 AUTO_SYNC_GITHUB_ON_STARTUP = True
+
+
+SETTINGS_FILE = DATA_DIR / "settings.json"
+
+def get_auto_sync_on_startup() -> bool:
+    if SETTINGS_FILE.exists():
+        try:
+            import json
+            with open(SETTINGS_FILE, "r", encoding="utf-8") as f:
+                return bool(json.load(f).get("auto_sync_on_startup", False))
+        except Exception:
+            pass
+    return False
+
+def set_auto_sync_on_startup(enabled: bool):
+    try:
+        import json
+        SETTINGS_FILE.parent.mkdir(parents=True, exist_ok=True)
+        data = {}
+        if SETTINGS_FILE.exists():
+            try:
+                with open(SETTINGS_FILE, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+            except Exception:
+                pass
+        data["auto_sync_on_startup"] = bool(enabled)
+        with open(SETTINGS_FILE, "w", encoding="utf-8") as f:
+            json.dump(data, f)
+    except Exception:
+        pass
