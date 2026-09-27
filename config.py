@@ -51,7 +51,7 @@ SESSION_CLOSE_MINUTE = 0
 LIVE_POLL_INTERVAL_MINUTES = 5
 
 # Active Trading Days (6 = Sun, 0 = Mon, 1 = Tue, 2 = Wed, 3 = Thu)
-ACTIVE_TRADING_DAYS = [0, 1, 2, 3, 4]
+ACTIVE_TRADING_DAYS = [6, 0, 1, 2, 3]
 
 # GitHub Repository Sync Settings
 ENABLE_GIT_SYNC = True
