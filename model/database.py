@@ -5,7 +5,7 @@ Minimizes network calls by maintaining local historical baseline data.
 Includes robust fallback for network/FUSE mounted filesystems.
 """
 import sqlite3
-from typing import List, Optional
+from typing import List, Optional, Dict, Any, Tuple
 import pandas as pd
 from pathlib import Path
 import logging
@@ -111,6 +111,42 @@ class DatabaseManager:
                     PRIMARY KEY (symbol, date)
                 );
             """)
+
+            # Market Psychology & Daily Breadth
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS market_psychology (
+                    date TEXT PRIMARY KEY,
+                    total_turnover REAL,
+                    total_volume REAL,
+                    advances INTEGER,
+                    declines INTEGER,
+                    unchanged INTEGER,
+                    ad_ratio REAL,
+                    circuit_high_count INTEGER,
+                    circuit_low_count INTEGER,
+                    fear_greed_score REAL,
+                    sentiment_summary TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                );
+            """)
+
+            # Daily Financial & Policy News
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS daily_news (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    date TEXT NOT NULL,
+                    timestamp TEXT NOT NULL,
+                    source TEXT NOT NULL,
+                    title TEXT NOT NULL,
+                    summary TEXT,
+                    url TEXT UNIQUE,
+                    category TEXT,
+                    sentiment_score REAL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                );
+            """)
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_news_date ON daily_news(date);")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_news_url ON daily_news(url);")
             conn.commit()
 
     def register_tickers(self, symbols: List[str]):
@@ -314,3 +350,87 @@ class DatabaseManager:
                     turnover=excluded.turnover
             """, records)
             conn.commit()
+
+    def upsert_market_psychology(self, data: Dict[str, Any]):
+        """Inserts or updates daily market breadth and psychology metrics."""
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                INSERT INTO market_psychology (
+                    date, total_turnover, total_volume, advances, declines, unchanged,
+                    ad_ratio, circuit_high_count, circuit_low_count, fear_greed_score, sentiment_summary
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(date) DO UPDATE SET
+                    total_turnover=excluded.total_turnover,
+                    total_volume=excluded.total_volume,
+                    advances=excluded.advances,
+                    declines=excluded.declines,
+                    unchanged=excluded.unchanged,
+                    ad_ratio=excluded.ad_ratio,
+                    circuit_high_count=excluded.circuit_high_count,
+                    circuit_low_count=excluded.circuit_low_count,
+                    fear_greed_score=excluded.fear_greed_score,
+                    sentiment_summary=excluded.sentiment_summary
+            """, (
+                str(data.get("date")),
+                float(data.get("total_turnover", 0.0)),
+                float(data.get("total_volume", 0.0)),
+                int(data.get("advances", 0)),
+                int(data.get("declines", 0)),
+                int(data.get("unchanged", 0)),
+                float(data.get("ad_ratio", 1.0)),
+                int(data.get("circuit_high_count", 0)),
+                int(data.get("circuit_low_count", 0)),
+                float(data.get("fear_greed_score", 50.0)),
+                str(data.get("sentiment_summary", ""))
+            ))
+            conn.commit()
+
+    def get_market_psychology(self, limit: int = 30) -> pd.DataFrame:
+        """Returns historical market psychology and breadth records."""
+        with self._get_connection() as conn:
+            query = f"SELECT * FROM market_psychology ORDER BY date DESC LIMIT {int(limit)}"
+            return pd.read_sql(query, conn)
+
+    def upsert_news_articles(self, articles: List[Dict[str, Any]]) -> int:
+        """Inserts new financial articles, ignoring duplicates by URL."""
+        if not articles:
+            return 0
+        inserted = 0
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            for art in articles:
+                url = art.get("url", "")
+                if not url:
+                    continue
+                cursor.execute("""
+                    INSERT INTO daily_news (date, timestamp, source, title, summary, url, category, sentiment_score)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(url) DO UPDATE SET
+                        title=excluded.title,
+                        summary=excluded.summary,
+                        category=excluded.category,
+                        sentiment_score=excluded.sentiment_score
+                """, (
+                    str(art.get("date")),
+                    str(art.get("timestamp")),
+                    str(art.get("source")),
+                    str(art.get("title")),
+                    str(art.get("summary", "")),
+                    url,
+                    str(art.get("category", "General")),
+                    float(art.get("sentiment_score", 0.0)) if art.get("sentiment_score") is not None else None
+                ))
+                inserted += 1
+            conn.commit()
+        return inserted
+
+    def get_recent_news(self, date: Optional[str] = None, limit: int = 50) -> pd.DataFrame:
+        """Fetches recent news articles."""
+        with self._get_connection() as conn:
+            if date:
+                query = f"SELECT * FROM daily_news WHERE date = ? ORDER BY timestamp DESC LIMIT {int(limit)}"
+                return pd.read_sql(query, conn, params=[date])
+            else:
+                query = f"SELECT * FROM daily_news ORDER BY date DESC, timestamp DESC LIMIT {int(limit)}"
+                return pd.read_sql(query, conn)

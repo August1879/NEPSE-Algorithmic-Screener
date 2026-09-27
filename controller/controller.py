@@ -171,3 +171,17 @@ class AppController:
             set_auto_sync_on_startup(enabled)
         except Exception:
             pass
+
+    def sync_daily_market_psychology(self) -> Tuple[int, str]:
+        """Calculates and saves today's market breadth and Fear & Greed index."""
+        from model.engine import NepsePsychologyEngine
+        engine = NepsePsychologyEngine(self.db)
+        saved = engine.backfill_history(limit_days=5)
+        return saved, f"Updated market breadth & psychology ({saved} sessions)."
+
+    def sync_daily_news(self) -> Tuple[int, str]:
+        """Scrapes latest headlines and saves to daily_news."""
+        from model.market_scraper import NepseNewsScraper
+        scraper = NepseNewsScraper(self.db)
+        count = scraper.scrape_and_save_all_news()
+        return count, f"Collected and saved {count} news articles."

@@ -155,3 +155,109 @@ class NepseTechnicalEngine:
         result["is_valley"] = extrema["is_valley"]
 
         return result
+
+
+class NepsePsychologyEngine:
+    """
+    NEPSE Market Psychology & Breadth Calculation Engine.
+    Derives crowd sentiment, Advance/Decline ratios, circuit breaker activity,
+    turnover expansion, and a composite Fear & Greed Index from floor price data.
+    """
+    def __init__(self, db_manager):
+        self.db = db_manager
+
+    def calculate_session_psychology(self, session_df: pd.DataFrame, target_date: str) -> dict:
+        """
+        Calculates breadth and Fear & Greed score from a single day's trading data across all stocks.
+        Expects session_df columns: symbol, open, high, low, close, volume, turnover.
+        """
+        if session_df.empty:
+            return {}
+
+        total_turnover = float(session_df["turnover"].sum()) if "turnover" in session_df.columns else 0.0
+        total_volume = float(session_df["volume"].sum()) if "volume" in session_df.columns else 0.0
+
+        if "open" in session_df.columns and "close" in session_df.columns:
+            diff = session_df["close"] - session_df["open"]
+            pct_chg = np.where(session_df["open"] > 0, (diff / session_df["open"]) * 100.0, 0.0)
+        else:
+            pct_chg = np.zeros(len(session_df))
+
+        advances = int(np.sum(pct_chg > 0.1))
+        declines = int(np.sum(pct_chg < -0.1))
+        unchanged = int(len(session_df) - advances - declines)
+
+        ad_ratio = round(advances / max(declines, 1), 2)
+
+        circuit_high = int(np.sum(pct_chg >= 9.5))
+        circuit_low = int(np.sum(pct_chg <= -9.5))
+
+        total_traded = max(advances + declines, 1)
+        breadth_factor = (advances - declines) / total_traded
+        score = 50.0 + (breadth_factor * 30.0)
+
+        circuit_diff = circuit_high - circuit_low
+        score += min(15.0, max(-15.0, circuit_diff * 2.5))
+
+        fear_greed_score = round(max(0.0, min(100.0, score)), 1)
+
+        if fear_greed_score >= 75:
+            sentiment_tag = "Extreme Greed / Euphoria"
+        elif fear_greed_score >= 60:
+            sentiment_tag = "Greed / Bullish Sentiment"
+        elif fear_greed_score <= 25:
+            sentiment_tag = "Extreme Fear / Panic"
+        elif fear_greed_score <= 40:
+            sentiment_tag = "Fear / Bearish Sentiment"
+        else:
+            sentiment_tag = "Neutral Market"
+
+        summary = (
+            f"{sentiment_tag} | Advances: {advances}, Declines: {declines}, "
+            f"Unchanged: {unchanged}, A/D Ratio: {ad_ratio:.2f}, "
+            f"Upper Circuits: {circuit_high}, Lower Circuits: {circuit_low}"
+        )
+
+        return {
+            "date": target_date,
+            "total_turnover": total_turnover,
+            "total_volume": total_volume,
+            "advances": advances,
+            "declines": declines,
+            "unchanged": unchanged,
+            "ad_ratio": ad_ratio,
+            "circuit_high_count": circuit_high,
+            "circuit_low_count": circuit_low,
+            "fear_greed_score": fear_greed_score,
+            "sentiment_summary": summary
+        }
+
+    def backfill_history(self, limit_days: int = 120) -> int:
+        """
+        Calculates and stores market psychology for historical dates already in eod_prices.
+        """
+        with self.db._get_connection() as conn:
+            dates_df = pd.read_sql(
+                f"SELECT DISTINCT date FROM eod_prices ORDER BY date DESC LIMIT {int(limit_days)}",
+                conn
+            )
+            distinct_dates = dates_df["date"].tolist()
+
+        if not distinct_dates:
+            return 0
+
+        saved = 0
+        for d in reversed(distinct_dates):
+            with self.db._get_connection() as conn:
+                day_df = pd.read_sql(
+                    "SELECT symbol, open, high, low, close, volume, turnover FROM eod_prices WHERE date = ?",
+                    conn,
+                    params=[d]
+                )
+            if not day_df.empty and len(day_df) >= 10:
+                metrics = self.calculate_session_psychology(day_df, d)
+                if metrics:
+                    self.db.upsert_market_psychology(metrics)
+                    saved += 1
+
+        return saved

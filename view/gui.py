@@ -606,9 +606,13 @@ class CLIViewer:
         print("-" * 90)
 
         if all_stocks:
-            print("Syncing all NEPSE securities (~80+ listed companies)...")
+            print("Syncing all NEPSE securities (300+ listed securities)...")
             count, msg = controller.sync_all_nepse_stocks()
             print(f"-> {msg}")
+            _, p_msg = controller.sync_daily_market_psychology()
+            print(f"-> [Psychology Index] {p_msg}")
+            _, n_msg = controller.sync_daily_news()
+            print(f"-> [Daily News] {n_msg}")
 
         watchlist = controller.get_watchlist()
         results = []
