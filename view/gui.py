@@ -699,7 +699,8 @@ class NepseScreenerMainWindow(QMainWindow):
         self._populate_news_tab()
         if self.controller.get_auto_sync_startup():
             QTimer.singleShot(1500, self._handle_cloud_sync)
-        QTimer.singleShot(4000, lambda: self._handle_check_updates(silent=True))
+        # Startup update check disabled to prevent modal loop; check manually via Settings button
+        # QTimer.singleShot(4000, lambda: self._handle_check_updates(silent=True))
 
     def _ensure_web_view(self):
         if getattr(self, "web_view", None) is None and WEBENGINE_AVAILABLE:

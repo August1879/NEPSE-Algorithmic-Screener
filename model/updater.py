@@ -1,7 +1,7 @@
 """
 Auto-Updater Engine for NEPSE Algorithmic Screener.
-Checks GitHub Releases API, downloads assets in background, waits for PID exit,
-and self-restarts cleanly on Windows.
+Checks GitHub Releases API, downloads assets in background, terminates child processes,
+overwrites application directory safely, and self-restarts on Windows.
 """
 import os
 import sys
@@ -16,7 +16,7 @@ import urllib.request
 
 logger = logging.getLogger(__name__)
 
-APP_VERSION = "1.5.5"
+APP_VERSION = "1.6.1"
 GITHUB_REPO = "August1879/NEPSE-Algorithmic-Screener"
 RELEASES_API_URL = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
 
@@ -81,34 +81,37 @@ def check_for_updates() -> Tuple[bool, Dict[str, Any]]:
 
 def apply_update_and_restart(zip_path: Path):
     """
-    Extracts downloaded zip to a staging directory, generates an updater script
-    that waits for the current process PID to terminate, and restarts the application.
+    Extracts downloaded zip, locates the directory containing the executable,
+    generates a batch script that terminates lingering processes, overwrites
+    all files cleanly, and restarts the application.
     """
     is_frozen = getattr(sys, "frozen", False)
     if not is_frozen:
-        logger.info("Application is running from source, not a frozen executable. Skipping batch restart.")
+        logger.info("Application running from source. Auto-update only restarts frozen Windows executables.")
         return False, "Auto-update restart is only applicable to packaged Windows executables."
 
     exe_path = Path(sys.executable).resolve()
     app_dir = exe_path.parent
     current_pid = os.getpid()
 
-    # Staging directory
     staging_dir = Path(tempfile.mkdtemp(prefix="nepse_update_stage_"))
     with zipfile.ZipFile(zip_path, "r") as z:
         z.extractall(staging_dir)
 
-    # Check if files are nested inside a subfolder
-    subdirs = [p for p in staging_dir.iterdir() if p.is_dir()]
-    source_dir = staging_dir
-    if len(subdirs) == 1 and (subdirs[0] / exe_path.name).exists():
-        source_dir = subdirs[0]
+    # Automatically find the exact directory containing the executable inside the zip
+    matches = [p.parent for p in staging_dir.rglob(exe_path.name)]
+    source_dir = matches[0] if matches else staging_dir
 
-    # Create robust updater batch script that waits for current process PID to exit
-    batch_file = app_dir.parent / "nepse_updater.bat"
+    # Write updater batch to %TEMP% to prevent Program Files UAC permission failures
+    batch_file = Path(tempfile.gettempdir()) / "nepse_updater.bat"
     bat_content = f"""@echo off
 title NEPSE Screener Auto-Updater
-echo Waiting for NEPSE Screener process to fully close...
+echo Waiting for all NEPSE Screener processes to close...
+
+:: Kill main PID and any lingering Chromium rendering child processes
+taskkill /F /PID {current_pid} >nul 2>&1
+taskkill /F /IM QtWebEngineProcess.exe >nul 2>&1
+timeout /t 2 /nobreak > nul
 
 :wait_loop
 tasklist /FI "PID eq {current_pid}" 2>NUL | find /I "{current_pid}" >NUL
@@ -117,14 +120,20 @@ if "%ERRORLEVEL%"=="0" (
     goto wait_loop
 )
 
-echo Applying update...
+echo Applying update files to: {app_dir}
 timeout /t 1 /nobreak > nul
 
-xcopy /E /Y /I "{source_dir}" "{app_dir}" > nul
+:: Overwrite all binaries and folders
+xcopy /E /Y /I /R /H "{source_dir}" "{app_dir}" > "%TEMP%\\nepse_update_log.txt" 2>&1
+if "%ERRORLEVEL%" NEQ "0" (
+    robocopy "{source_dir}" "{app_dir}" /E /IS /IT /NP /R:3 /W:1 > "%TEMP%\\nepse_update_log.txt" 2>&1
+)
+
+:: Cleanup staging
 if exist "{staging_dir}" rmdir /S /Q "{staging_dir}"
 if exist "{zip_path}" del /F /Q "{zip_path}"
 
-echo Starting updated version...
+echo Starting updated NEPSE Screener...
 start "" "{exe_path}"
 (goto) 2>nul & del "%~f0"
 exit
@@ -132,6 +141,5 @@ exit
     with open(batch_file, "w", encoding="utf-8") as f:
         f.write(bat_content)
 
-    # Launch detached batch process
     subprocess.Popen(["cmd.exe", "/c", str(batch_file)], shell=True)
     return True, "Update script initialized. Restarting..."
