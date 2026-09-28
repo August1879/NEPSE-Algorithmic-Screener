@@ -29,6 +29,7 @@ def main():
     parser.add_argument("--all", action="store_true", help="Scrape and screen all NEPSE stocks (not just watchlist)")
     parser.add_argument("--schedule", action="store_true", help="Run automated scraping scheduler daemon")
     parser.add_argument("--interval", type=int, default=1, help="Polling interval in minutes for live daemon (default: 1)")
+    parser.add_argument("--stop-on-close", action="store_true", help="Stop daemon when session closes")
     parser.add_argument("--add", type=str, help="Add a ticker symbol to the watchlist before running")
     parser.add_argument("--export-chart", type=str, help="Export technical chart for a specific symbol to PNG")
     parser.add_argument("--tradingview", type=str, help="Launch interactive TradingView chart in browser (e.g. --tradingview SHIVM)")
@@ -65,7 +66,7 @@ def main():
 
         if args.schedule:
             from view.gui import CLIViewer
-            CLIViewer.run_scheduler_daemon(controller, poll_interval_minutes=args.interval)
+            CLIViewer.run_scheduler_daemon(controller, poll_interval_minutes=args.interval, stop_when_closed=args.stop_on_close)
             return
 
         from view.gui import CLIViewer

@@ -993,7 +993,7 @@ class CLIViewer:
         return results
 
     @staticmethod
-    def run_scheduler_daemon(controller, poll_interval_minutes: int = 1):
+    def run_scheduler_daemon(controller, poll_interval_minutes: int = 1, stop_when_closed: bool = False):
         print("\n" + "=" * 80)
         print(f"Starting NEPSE Scraper Daemon (Interval: {poll_interval_minutes}m)")
         print("=" * 80)
@@ -1010,8 +1010,9 @@ class CLIViewer:
         def on_holiday(msg):
             print(f"[Holiday Notice] {msg}")
 
-        controller.start_scheduler(
+        sched = controller.start_scheduler(
             poll_interval_minutes=poll_interval_minutes,
+            stop_when_closed=stop_when_closed,
             on_status=on_status,
             on_ticker=on_ticker,
             on_cycle_finished=on_cycle_finished,
@@ -1019,7 +1020,7 @@ class CLIViewer:
         )
 
         try:
-            while True:
+            while sched.isRunning() if sched else True:
                 time.sleep(1)
         except KeyboardInterrupt:
             print("\nShutting down scheduler daemon...")
