@@ -128,6 +128,29 @@ class AppController:
             self.scheduler.stop()
             self.scheduler = None
 
+    def start_scheduler(
+        self,
+        poll_interval_minutes: int = 1,
+        on_status=None,
+        on_ticker=None,
+        on_cycle_finished=None,
+        on_holiday=None
+    ):
+        return self.start_automated_scheduler(
+            on_status=on_status,
+            on_ticker=on_ticker,
+            on_cycle_finished=on_cycle_finished,
+            on_holiday=on_holiday,
+            poll_interval_minutes=poll_interval_minutes
+        )
+
+    def stop_scheduler(self):
+        return self.stop_automated_scheduler()
+
+    def is_scheduler_running(self) -> bool:
+        return bool(self.scheduler and self.scheduler.isRunning())
+
+
     def get_market_status(self) -> Tuple[bool, str]:
         return self.calendar.is_market_open_now()
 
