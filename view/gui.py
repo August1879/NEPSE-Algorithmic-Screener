@@ -735,7 +735,7 @@ class NepseScreenerMainWindow(QMainWindow):
 
     def _handle_open_tradingview(self):
         wl = self.controller.get_watchlist()
-        sym = self.selected_symbol or (wl[0] if wl else "NHPC")
+        sym = self.selected_symbol or (wl[0] if wl else "NEPSE")
         self.selected_symbol = sym
         df = self.controller.get_historical_data(sym)
         if df.empty:

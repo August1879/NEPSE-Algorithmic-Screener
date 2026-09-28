@@ -14,7 +14,7 @@ EXPORTS_DIR = DATA_DIR / "exports"
 EXPORTS_DIR.mkdir(exist_ok=True)
 
 # Default Watchlist
-DEFAULT_WATCHLIST = ["NHPC", "RSML", "SHIVM", "SARBTM"]
+DEFAULT_WATCHLIST = ["NEPSE", "NHPC", "RSML", "SHIVM", "SARBTM"]
 
 # Indicator Parameters
 RSI_PERIOD = 14

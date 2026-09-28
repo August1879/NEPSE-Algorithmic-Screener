@@ -15,6 +15,7 @@ from .database import DatabaseManager
 logger = logging.getLogger(__name__)
 
 NEPSE_SECTORS_MAP: Dict[str, List[str]] = {
+    "Benchmark Index": ["NEPSE"],
     "Commercial Banks": [
         "ADBL", "CZBIL", "EBL", "GBIME", "HBL", "KBL", "LSL", "MBL", "NABIL", 
         "NBL", "NICA", "NIMB", "NMB", "PCBL", "PRVU", "SANIMA", "SBI", "SBL", "SCB"
@@ -176,6 +177,9 @@ class FullMarketScraper:
                 elif sector == "Mutual Fund":
                     base_price = np.random.uniform(8.5, 15.0)
                     base_vol = np.random.randint(10000, 200000)
+                elif sector == "Benchmark Index" or sym == "NEPSE":
+                    base_price = np.random.uniform(2500, 2750)
+                    base_vol = np.random.randint(12000000, 32000000)
                 elif sector in ("Tradable Debentures & Bonds", "Promoter Shares"):
                     base_price = np.random.uniform(950, 1050)
                     base_vol = np.random.randint(500, 10000)
