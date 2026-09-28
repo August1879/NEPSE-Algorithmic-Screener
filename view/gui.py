@@ -213,7 +213,16 @@ class NepseScreenerMainWindow(QMainWindow):
         filter_bar = QHBoxLayout()
         filter_bar.addWidget(QLabel("Filter:"))
         self.filter_combo = QComboBox()
-        self.filter_combo.addItems(["All Listed Stocks", "🟢 Buy Signals Only", "🔴 Sell Signals Only", "⚡ All Signals (Buy & Sell)", "🚀 Momentum Breakouts", "📈 Trend Pullbacks", "💧 Oversold Dips", "⭐ Core Watchlist"])
+        self.filter_combo.addItems([
+            "All Listed Stocks",
+            "🟢 Buy Signals Only",
+            "🔴 Sell Signals Only",
+            "⚡ All Signals (Buy & Sell)",
+            "🚀 Momentum Breakouts",
+            "📈 Trend Pullbacks",
+            "💧 Oversold Dips",
+            "⭐ Core Watchlist"
+        ])
         self.filter_combo.currentTextChanged.connect(self._handle_filter_change)
         filter_bar.addWidget(self.filter_combo)
 
@@ -530,16 +539,53 @@ class NepseScreenerMainWindow(QMainWindow):
             for _, row in latest_df.iterrows():
                 signal_map[row["symbol"]] = row.to_dict()
 
+        curr_filter = (self.current_filter or "").lower()
         display_symbols = []
-        if self.current_filter in ("All Actionable Signals", "Entry Signals Only"):
-            display_symbols = [s for s in all_symbols if signal_map.get(s, {}).get("is_entry_signal", False)]
-        elif self.current_filter == "Momentum Breakouts":
-            display_symbols = [s for s in all_symbols if "BREAKOUT" in signal_map.get(s, {}).get("confirmation_notes", "")]
-        elif self.current_filter == "Trend Pullbacks":
-            display_symbols = [s for s in all_symbols if "PULLBACK" in signal_map.get(s, {}).get("confirmation_notes", "")]
-        elif self.current_filter == "Oversold Dips":
-            display_symbols = [s for s in all_symbols if "DIP" in signal_map.get(s, {}).get("confirmation_notes", "")]
-        elif self.current_filter == "Core Watchlist":
+
+        if "buy" in curr_filter and "sell" not in curr_filter:
+            display_symbols = [
+                s for s in all_symbols
+                if bool(signal_map.get(s, {}).get("is_entry_signal", False))
+                or "BUY" in signal_map.get(s, {}).get("confirmation_notes", "").upper()
+                or "PULLBACK" in signal_map.get(s, {}).get("confirmation_notes", "").upper()
+                or "BREAKOUT" in signal_map.get(s, {}).get("confirmation_notes", "").upper()
+                or "DIP" in signal_map.get(s, {}).get("confirmation_notes", "").upper()
+            ]
+        elif "sell" in curr_filter and "buy" not in curr_filter:
+            display_symbols = [
+                s for s in all_symbols
+                if "SELL" in signal_map.get(s, {}).get("confirmation_notes", "").upper()
+                or "PROFIT" in signal_map.get(s, {}).get("confirmation_notes", "").upper()
+                or "BREAKDOWN" in signal_map.get(s, {}).get("confirmation_notes", "").upper()
+                or "DISTRIBUTION" in signal_map.get(s, {}).get("confirmation_notes", "").upper()
+            ]
+        elif "all signals" in curr_filter or "buy & sell" in curr_filter or "actionable" in curr_filter:
+            display_symbols = [
+                s for s in all_symbols
+                if bool(signal_map.get(s, {}).get("is_entry_signal", False))
+                or "BUY" in signal_map.get(s, {}).get("confirmation_notes", "").upper()
+                or "SELL" in signal_map.get(s, {}).get("confirmation_notes", "").upper()
+                or "PULLBACK" in signal_map.get(s, {}).get("confirmation_notes", "").upper()
+                or "BREAKOUT" in signal_map.get(s, {}).get("confirmation_notes", "").upper()
+                or "DIP" in signal_map.get(s, {}).get("confirmation_notes", "").upper()
+            ]
+        elif "breakout" in curr_filter:
+            display_symbols = [
+                s for s in all_symbols
+                if "BREAKOUT" in signal_map.get(s, {}).get("confirmation_notes", "").upper()
+            ]
+        elif "pullback" in curr_filter:
+            display_symbols = [
+                s for s in all_symbols
+                if "PULLBACK" in signal_map.get(s, {}).get("confirmation_notes", "").upper()
+            ]
+        elif "dip" in curr_filter or "oversold" in curr_filter:
+            display_symbols = [
+                s for s in all_symbols
+                if "DIP" in signal_map.get(s, {}).get("confirmation_notes", "").upper()
+                or "OVERSOLD" in signal_map.get(s, {}).get("confirmation_notes", "").upper()
+            ]
+        elif "watchlist" in curr_filter:
             from config import DEFAULT_WATCHLIST
             display_symbols = [s for s in all_symbols if s in DEFAULT_WATCHLIST]
         else:
@@ -558,17 +604,73 @@ class NepseScreenerMainWindow(QMainWindow):
 
     def _update_table_row(self, row_idx: int, symbol: str, data: Dict[str, Any]):
         close = data.get("close", 0.0)
-        chg = data.get("change_pct", 0.0)
+        chg = data.get("change_pct")
         rsi = data.get("rsi_14", 0.0)
         zscore = data.get("vol_zscore", 0.0)
-        is_entry = data.get("is_entry_signal", False)
+        notes = str(data.get("confirmation_notes", ""))
+        is_entry = bool(data.get("is_entry_signal", False)) or "BUY" in notes.upper() or "PULLBACK" in notes.upper() or "BREAKOUT" in notes.upper()
+        is_sell = "SELL" in notes.upper() or "BREAKDOWN" in notes.upper() or "PROFIT" in notes.upper() or "DISTRIBUTION" in notes.upper()
 
+        # Pure Action Column
+        action_text = "⚪ HOLD"
+        action_fg = QColor("#90a4ae")
+        action_bg = None
+
+        if is_entry:
+            action_text = "🟢 BUY"
+            action_fg = QColor("#00e676")
+            action_bg = QColor("#143823")
+        elif is_sell:
+            action_text = "🔴 SELL"
+            action_fg = QColor("#ff5252")
+            action_bg = QColor("#3b1419")
+
+        # Strategy Notes Column
+        detail_text = "Neutral / Consolidation"
+        detail_fg = None
+        upper_notes = notes.upper()
+        if "BREAKOUT" in upper_notes:
+            detail_text = "Momentum Breakout"
+            detail_fg = QColor("#00e676")
+        elif "PULLBACK" in upper_notes:
+            detail_text = "Trend Pullback (50-SMA)"
+            detail_fg = QColor("#64b5f6")
+        elif "DIP" in upper_notes or "OVERSOLD DIP" in upper_notes:
+            detail_text = "Capitulation Oversold Dip"
+            detail_fg = QColor("#69f0ae")
+        elif "TAKE PROFIT" in upper_notes:
+            detail_text = "Take Profit (Overbought)"
+            detail_fg = QColor("#ff5252")
+        elif "BREAKDOWN" in upper_notes:
+            detail_text = "Breakdown (Lost 50-SMA)"
+            detail_fg = QColor("#ff7043")
+        elif "DISTRIBUTION" in upper_notes:
+            detail_text = "Distribution Volume Dump"
+            detail_fg = QColor("#ff5252")
+        elif "OVERSOLD" in upper_notes or (rsi and rsi < 30.0):
+            detail_text = "Watchlist: Near Oversold"
+            detail_fg = QColor("#ffd54f")
+        elif "VOLUME" in upper_notes or (zscore and zscore >= 2.0):
+            detail_text = "Watchlist: Volume Surge"
+            detail_fg = QColor("#ffb74d")
+
+        # Create Items for all 7 Columns
         item_sym = QTableWidgetItem(symbol)
         item_sym.setFont(QFont("Arial", 9, QFont.Weight.Bold))
 
+        item_action = QTableWidgetItem(action_text)
+        item_action.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+        item_action.setFont(QFont("Arial", 9, QFont.Weight.Bold))
+        item_action.setForeground(QBrush(action_fg))
+        if action_bg:
+            item_action.setBackground(QBrush(action_bg))
+
         item_close = QTableWidgetItem(f"{close:.2f}" if close else "--")
+        item_close.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+
         if chg is not None and not (isinstance(chg, float) and np.isnan(chg)):
             item_chg = QTableWidgetItem(f"{float(chg):+.2f}%")
+            item_chg.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
             if chg > 0:
                 item_chg.setForeground(QBrush(QColor("#00e676")))
             elif chg < 0:
@@ -577,54 +679,41 @@ class NepseScreenerMainWindow(QMainWindow):
                 item_chg.setForeground(QBrush(QColor("#b0bec5")))
         else:
             item_chg = QTableWidgetItem("--")
+            item_chg.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
 
         item_rsi = QTableWidgetItem(f"{rsi:.1f}" if rsi else "--")
+        item_rsi.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
         if rsi and rsi < 30.0:
             item_rsi.setForeground(QBrush(QColor("#69f0ae")))
             item_rsi.setFont(QFont("Arial", 9, QFont.Weight.Bold))
+        elif rsi and rsi >= 70.0:
+            item_rsi.setForeground(QBrush(QColor("#ff5252")))
 
         item_z = QTableWidgetItem(f"{zscore:+.2f}σ" if zscore else "--")
+        item_z.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
         if zscore and zscore >= 2.0:
             item_z.setForeground(QBrush(QColor("#ffb74d")))
             item_z.setFont(QFont("Arial", 9, QFont.Weight.Bold))
 
-        notes = data.get("confirmation_notes", "")
-        status_text = "Neutral"
-        badge_fg = None
-        badge_bg = None
+        item_detail = QTableWidgetItem(detail_text)
+        item_detail.setTextAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+        if detail_fg:
+            item_detail.setForeground(QBrush(detail_fg))
 
-        if "BREAKOUT" in notes:
-            status_text = "🚀 BREAKOUT"
-            badge_fg = QColor("#00e676")
-            badge_bg = QColor("#143122")
-        elif "PULLBACK" in notes:
-            status_text = "📈 PULLBACK"
-            badge_fg = QColor("#64b5f6")
-            badge_bg = QColor("#102a43")
-        elif "DIP" in notes:
-            status_text = "🟢 DIP BUY"
-            badge_fg = QColor("#69f0ae")
-            badge_bg = QColor("#133926")
-        elif "NEAR SETUP - Oversold" in notes or (rsi and rsi < 30.0):
-            status_text = "🟡 Oversold"
-            badge_fg = QColor("#ffd54f")
-        elif "NEAR SETUP - Volume" in notes or (zscore and zscore >= 2.0):
-            status_text = "🟡 Vol Surge"
-            badge_fg = QColor("#ffb74d")
-
-        item_status = QTableWidgetItem(status_text)
-        item_status.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-        if badge_fg:
-            item_status.setForeground(QBrush(badge_fg))
-            item_status.setFont(QFont("Arial", 9, QFont.Weight.Bold))
-
+        # Row highlighting
         if is_entry:
-            highlight = badge_bg if badge_bg else QColor(SIGNAL_HIGHLIGHT_COLOR)
-            for item in (item_sym, item_close, item_chg, item_rsi, item_z, item_status):
-                item.setBackground(QBrush(highlight))
+            highlight = QColor("#102619")
+            for itm in (item_sym, item_action, item_close, item_chg, item_rsi, item_z, item_detail):
+                itm.setBackground(QBrush(highlight))
+        elif is_sell:
+            highlight = QColor("#291316")
+            for itm in (item_sym, item_action, item_close, item_chg, item_rsi, item_z, item_detail):
+                itm.setBackground(QBrush(highlight))
 
-        for col_idx, item in enumerate([item_sym, item_close, item_chg, item_rsi, item_z, item_status]):
-            self.table.setItem(row_idx, col_idx, item)
+        # Explicitly set all 7 columns in exact index order:
+        columns = [item_sym, item_action, item_close, item_chg, item_rsi, item_z, item_detail]
+        for col_idx, itm in enumerate(columns):
+            self.table.setItem(row_idx, col_idx, itm)
 
     def _handle_table_selection(self):
         selected_rows = self.table.selectedItems()
