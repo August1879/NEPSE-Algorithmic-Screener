@@ -213,7 +213,7 @@ class NepseScreenerMainWindow(QMainWindow):
         filter_bar = QHBoxLayout()
         filter_bar.addWidget(QLabel("Filter:"))
         self.filter_combo = QComboBox()
-        self.filter_combo.addItems(["All Listed Stocks", "All Actionable Signals", "Momentum Breakouts", "Trend Pullbacks", "Oversold Dips", "Core Watchlist"])
+        self.filter_combo.addItems(["All Listed Stocks", "🟢 Buy Signals Only", "🔴 Sell Signals Only", "⚡ All Signals (Buy & Sell)", "🚀 Momentum Breakouts", "📈 Trend Pullbacks", "💧 Oversold Dips", "⭐ Core Watchlist"])
         self.filter_combo.currentTextChanged.connect(self._handle_filter_change)
         filter_bar.addWidget(self.filter_combo)
 
@@ -234,9 +234,9 @@ class NepseScreenerMainWindow(QMainWindow):
 
         # Watchlist Table
         self.table = QTableWidget()
-        self.table.setColumnCount(6)
+        self.table.setColumnCount(7)
         self.table.setHorizontalHeaderLabels([
-            "Symbol", "LTP (Rs.)", "Chg %", "RSI(14)", "Vol Z-Score", "Signal Setup"
+            "Symbol", "Action", "LTP (Rs.)", "Chg %", "RSI(14)", "Vol Z-Score", "Strategy / Notes"
         ])
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         self.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
