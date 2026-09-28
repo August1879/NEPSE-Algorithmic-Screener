@@ -213,7 +213,7 @@ class NepseScreenerMainWindow(QMainWindow):
         filter_bar = QHBoxLayout()
         filter_bar.addWidget(QLabel("Filter:"))
         self.filter_combo = QComboBox()
-        self.filter_combo.addItems(["All Listed Stocks", "Entry Signals Only", "Core Watchlist"])
+        self.filter_combo.addItems(["All Listed Stocks", "All Actionable Signals", "Momentum Breakouts", "Trend Pullbacks", "Oversold Dips", "Core Watchlist"])
         self.filter_combo.currentTextChanged.connect(self._handle_filter_change)
         filter_bar.addWidget(self.filter_combo)
 
@@ -531,8 +531,14 @@ class NepseScreenerMainWindow(QMainWindow):
                 signal_map[row["symbol"]] = row.to_dict()
 
         display_symbols = []
-        if self.current_filter == "Entry Signals Only":
+        if self.current_filter in ("All Actionable Signals", "Entry Signals Only"):
             display_symbols = [s for s in all_symbols if signal_map.get(s, {}).get("is_entry_signal", False)]
+        elif self.current_filter == "Momentum Breakouts":
+            display_symbols = [s for s in all_symbols if "BREAKOUT" in signal_map.get(s, {}).get("confirmation_notes", "")]
+        elif self.current_filter == "Trend Pullbacks":
+            display_symbols = [s for s in all_symbols if "PULLBACK" in signal_map.get(s, {}).get("confirmation_notes", "")]
+        elif self.current_filter == "Oversold Dips":
+            display_symbols = [s for s in all_symbols if "DIP" in signal_map.get(s, {}).get("confirmation_notes", "")]
         elif self.current_filter == "Core Watchlist":
             from config import DEFAULT_WATCHLIST
             display_symbols = [s for s in all_symbols if s in DEFAULT_WATCHLIST]
@@ -582,16 +588,40 @@ class NepseScreenerMainWindow(QMainWindow):
             item_z.setForeground(QBrush(QColor("#ffb74d")))
             item_z.setFont(QFont("Arial", 9, QFont.Weight.Bold))
 
-        status_text = "ENTRY SIGNAL" if is_entry else "Neutral"
+        notes = data.get("confirmation_notes", "")
+        status_text = "Neutral"
+        badge_fg = None
+        badge_bg = None
+
+        if "BREAKOUT" in notes:
+            status_text = "🚀 BREAKOUT"
+            badge_fg = QColor("#00e676")
+            badge_bg = QColor("#143122")
+        elif "PULLBACK" in notes:
+            status_text = "📈 PULLBACK"
+            badge_fg = QColor("#64b5f6")
+            badge_bg = QColor("#102a43")
+        elif "DIP" in notes:
+            status_text = "🟢 DIP BUY"
+            badge_fg = QColor("#69f0ae")
+            badge_bg = QColor("#133926")
+        elif "NEAR SETUP - Oversold" in notes or (rsi and rsi < 30.0):
+            status_text = "🟡 Oversold"
+            badge_fg = QColor("#ffd54f")
+        elif "NEAR SETUP - Volume" in notes or (zscore and zscore >= 2.0):
+            status_text = "🟡 Vol Surge"
+            badge_fg = QColor("#ffb74d")
+
         item_status = QTableWidgetItem(status_text)
         item_status.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+        if badge_fg:
+            item_status.setForeground(QBrush(badge_fg))
+            item_status.setFont(QFont("Arial", 9, QFont.Weight.Bold))
 
         if is_entry:
-            highlight = QColor(SIGNAL_HIGHLIGHT_COLOR)
-            text_color = QColor(SIGNAL_TEXT_COLOR)
+            highlight = badge_bg if badge_bg else QColor(SIGNAL_HIGHLIGHT_COLOR)
             for item in (item_sym, item_close, item_chg, item_rsi, item_z, item_status):
                 item.setBackground(QBrush(highlight))
-                item.setForeground(QBrush(text_color))
 
         for col_idx, item in enumerate([item_sym, item_close, item_chg, item_rsi, item_z, item_status]):
             self.table.setItem(row_idx, col_idx, item)

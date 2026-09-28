@@ -1,6 +1,6 @@
 """
-Signal Generation & Screening Engine.
-Cross-references technical and statistical metrics against predefined entry criteria.
+Multi-Strategy Signal Generation & Screening Engine for NEPSE.
+Evaluates Mean-Reversion Dips, Momentum Volume Breakouts, and Trend Pullbacks.
 """
 from typing import Dict, List, Any
 import numpy as np
@@ -12,16 +12,13 @@ from config import (
 )
 from .engine import NepseTechnicalEngine
 
+
 class NepseScreener:
     def __init__(self, rsi_threshold: float = RSI_OVERSOLD, min_volume: int = MIN_LIQUIDITY_VOLUME):
         self.rsi_threshold = rsi_threshold
         self.min_volume = min_volume
 
     def evaluate_latest_bar(self, symbol: str, df: pd.DataFrame) -> Dict[str, Any]:
-        """
-        Evaluates the most recent trading bar for a given stock symbol.
-        Returns a standardized status dictionary consumed by the Controller & View.
-        """
         if df.empty or len(df) < 20:
             return {
                 "symbol": symbol,
@@ -40,7 +37,6 @@ class NepseScreener:
                 "confirmation_notes": "Insufficient historical data (< 20 bars)"
             }
 
-        # Ensure indicators are populated
         if "rsi_14" not in df.columns or "vol_spike" not in df.columns:
             df = NepseTechnicalEngine.enrich_dataframe(df)
 
@@ -60,36 +56,58 @@ class NepseScreener:
         sma_50 = float(last_row["sma_50"]) if pd.notna(last_row["sma_50"]) else 0.0
         sma_200 = float(last_row["sma_200"]) if pd.notna(last_row["sma_200"]) else 0.0
 
-        # Core criteria:
-        # 1. RSI < 30
-        # 2. Volume > 2-sigma (vol_spike)
-        # 3. Volume >= min_volume
-        cond_rsi = rsi < self.rsi_threshold
-        cond_vol = vol_spike and (volume >= self.min_volume)
+        open_p = float(last_row["open"])
+        high_p = float(last_row["high"])
+        low_p = float(last_row["low"])
+        prev_high = float(prev_row["high"])
 
-        # Candlestick Price Action Confirmation:
-        # Check for hammer / lower shadow absorption
-        body = abs(close - float(last_row["open"]))
-        candle_range = float(last_row["high"]) - float(last_row["low"])
-        lower_shadow = (min(close, float(last_row["open"])) - float(last_row["low"]))
-        
+        body = abs(close - open_p)
+        candle_range = high_p - low_p
+        lower_shadow = min(close, open_p) - low_p
         is_hammer = (lower_shadow >= 1.2 * body) and (candle_range > 0)
-        is_engulfing = (close > float(last_row["open"])) and (close >= float(prev_row["high"]))
-        recent_valley = bool(df["is_valley"].iloc[-5:].any())
+        is_engulfing = (close > open_p) and (close >= prev_high)
+
+        # 1. Strategy 1: Capitulation Dip
+        is_dip = (rsi < self.rsi_threshold) and vol_spike and (volume >= self.min_volume)
+
+        # 2. Strategy 2: Momentum Volume Breakout
+        is_breakout = (
+            vol_spike and
+            (volume >= self.min_volume) and
+            (close > prev_close) and
+            (close >= prev_high or (sma_50 > 0 and close >= sma_50)) and
+            (45.0 <= rsi <= 85.0)
+        )
+
+        # 3. Strategy 3: Trend Pullback / 50 SMA Bounce
+        is_uptrend = (close > sma_200) if sma_200 > 0 else True
+        near_sma_50 = (abs(close - sma_50) / sma_50 <= 0.035) if sma_50 > 0 else False
+        is_pullback = is_uptrend and near_sma_50 and (change_pct >= 0.0) and (40.0 <= rsi <= 56.0)
+
+        is_entry = is_dip or is_breakout or is_pullback
 
         notes = []
-        if cond_rsi:
+        if is_dip:
+            notes.append("🟢 [OVERSOLD DIP]")
             notes.append(f"RSI Oversold ({rsi:.1f} < {self.rsi_threshold})")
-        if cond_vol:
-            notes.append(f"Volume Spike ({vol_zscore:+.1f}σ, Vol: {int(volume):,})")
-        if is_hammer:
-            notes.append("Hammer/Lower Rejection Wick")
-        elif is_engulfing:
-            notes.append("Bullish Engulfing")
-        elif recent_valley:
-            notes.append("Support Valley Defended (last 5d)")
-
-        is_entry = cond_rsi and cond_vol
+            notes.append(f"Volume Spike ({vol_zscore:+.1f}σ)")
+            if is_hammer: notes.append("Hammer Wick")
+            elif is_engulfing: notes.append("Bullish Engulfing")
+        elif is_breakout:
+            notes.append("🚀 [MOMENTUM BREAKOUT]")
+            notes.append(f"Volume Surge ({vol_zscore:+.1f}σ, Vol: {int(volume):,})")
+            notes.append(f"Momentum RSI: {rsi:.1f}")
+            if close >= prev_high: notes.append("Resistance Breakout")
+        elif is_pullback:
+            notes.append("📈 [TREND PULLBACK]")
+            notes.append(f"50-SMA Support Rebound ({change_pct:+.2f}%)")
+            notes.append(f"Reset RSI: {rsi:.1f}")
+        elif rsi < 30.0:
+            notes.append(f"🟡 [NEAR SETUP - Oversold ({rsi:.1f})]")
+        elif vol_spike:
+            notes.append(f"🟡 [NEAR SETUP - Volume Spike ({vol_zscore:+.1f}σ)]")
+        else:
+            notes.append("Neutral / No Setup")
 
         return {
             "symbol": symbol,
@@ -105,14 +123,14 @@ class NepseScreener:
             "sma_50": sma_50,
             "sma_200": sma_200,
             "is_entry_signal": is_entry,
-            "confirmation_notes": " | ".join(notes) if notes else "Neutral / No Setup"
+            "confirmation_notes": " | ".join(notes)
         }
 
     def screen_watchlist(self, watchlist: List[str], data_provider) -> List[Dict[str, Any]]:
-        """Screens all symbols in the watchlist using historical data from provider."""
         results = []
         for symbol in watchlist:
             df = data_provider(symbol)
-            res = self.evaluate_latest_bar(symbol, df)
-            results.append(res)
+            if df is not None and not df.empty:
+                res = self.evaluate_latest_bar(symbol, df)
+                results.append(res)
         return results
