@@ -176,7 +176,7 @@ class UpdateDialog(QDialog):
 
     def _on_download_finished(self, success: bool, path_or_err: str):
         if not success:
-            QMessageBox.critical(self, "Update Failed", f"Could not download update:\n{path_or_err}")
+            QMessageBox.critical(self, "Update Failed", "Could not download update:\n" + str(path_or_err))
             self.progress_bar.setVisible(False)
             self.status_lbl.setVisible(False)
             self.update_btn.setEnabled(True)
@@ -184,15 +184,20 @@ class UpdateDialog(QDialog):
             return
 
         self.status_lbl.setText("Extracting update and preparing restart...")
-        success, msg = apply_update_and_restart(Path(path_or_err))
-        if success:
-            QMessageBox.information(
-                self,
-                "Restarting",
-                "Update downloaded successfully!\n\nThe application will now close and restart with the latest version."
-            )
-            import os
-            os._exit(0)
-        else:
-            QMessageBox.warning(self, "Manual Restart Required", msg)
-            self.accept()
+        try:
+            success, msg = apply_update_and_restart(Path(path_or_err))
+            if success:
+                QMessageBox.information(
+                    self,
+                    "Restarting",
+                    "Update downloaded successfully!\n\nThe application will now close and restart with the latest version."
+                )
+                import os
+                os._exit(0)
+            else:
+                QMessageBox.warning(self, "Restart Notice", "Update downloaded:\n\n" + str(msg))
+                self.accept()
+        except Exception as e:
+            QMessageBox.critical(self, "Update Error", "Failed to execute update restart script:\n" + str(e) + "\n\nPlease extract manually from %TEMP%.")
+            self.update_btn.setEnabled(True)
+            self.close_btn.setText("Close")

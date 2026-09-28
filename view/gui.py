@@ -447,6 +447,55 @@ class NepseScreenerMainWindow(QMainWindow):
         log_lay.addWidget(self.log_box)
         settings_layout.addWidget(log_group)
 
+        
+        # Dedicated User Guide Tab
+        guide_tab = QWidget()
+        guide_lay = QVBoxLayout(guide_tab)
+        guide_lay.setContentsMargins(14, 14, 14, 14)
+        guide_box = QTextEdit()
+        guide_box.setReadOnly(True)
+        guide_box.setStyleSheet("background-color: #161b22; color: #e6edf3; font-size: 13px; padding: 14px; border: 1px solid #30363d; border-radius: 6px;")
+        guide_box.setHtml("""
+        <h2 style="color: #58a6ff; margin-top: 0;">📘 NEPSE Algorithmic Screener &ndash; User Manual</h2>
+        <p style="color: #8b949e;">Complete guide to signals, technical indicators, and application features.</p>
+
+        <h3 style="color: #3fb950; border-bottom: 1px solid #30363d; padding-bottom: 4px;">1. Pure Action Signals (Action Column)</h3>
+        <p>The <b>Action</b> column gives an instant, unambiguous signal for each stock:</p>
+        <ul>
+            <li><b style="color: #3fb950;">🟢 BUY</b>: The algorithm generated an actionable entry setup (Breakout, 50-SMA Pullback, or Capitulation Oversold Dip).</li>
+            <li><b style="color: #f85149;">🔴 SELL</b>: The algorithm generated an exit trigger (Take Profit on RSI exhaustion, 50-SMA breakdown, or distribution volume dump).</li>
+            <li><b style="color: #8b949e;">⚪ HOLD</b>: Neutral consolidation. No high-probability technical edge present.</li>
+        </ul>
+
+        <h3 style="color: #79c0ff; border-bottom: 1px solid #30363d; padding-bottom: 4px;">2. Strategy &amp; Setup Types (Strategy / Notes Column)</h3>
+        <ul>
+            <li><b>🚀 Momentum Breakout</b>: Price crossing above its 50-SMA or 20-day high with a volume surge (Z-Score &ge; +2.0&sigma;) and healthy RSI (45&ndash;85).</li>
+            <li><b>📈 Trend Pullback (50-SMA)</b>: A stock in an established uptrend testing its 50-day moving average support and confirming a green rebound bar with RSI resetting.</li>
+            <li><b>💧 Capitulation Oversold Dip</b>: Severe selloff where RSI drops below 30 with abnormal volume absorption (smart money buying panic).</li>
+            <li><b>🔴 Take Profit (Overbought)</b>: Overbought RSI exhaustion (&ge; 70) or a rejection shooting star wick at resistance.</li>
+            <li><b>⚠️ Breakdown (Lost 50-SMA)</b>: Price slicing down through key 50-day moving average support on selling pressure.</li>
+            <li><b>🔻 Distribution Dump</b>: Heavy institutional volume selling (Z-Score &ge; +1.2&sigma; on a down candle).</li>
+        </ul>
+
+        <h3 style="color: #d29922; border-bottom: 1px solid #30363d; padding-bottom: 4px;">3. Technical Indicators Explained</h3>
+        <ul>
+            <li><b>LTP (Rs.)</b>: Latest Traded Price in Nepali Rupees.</li>
+            <li><b>Chg %</b>: Daily percentage price change relative to the previous trading day's close.</li>
+            <li><b>RSI (14)</b>: 14-period Relative Strength Index. Values &lt; 30 indicate oversold bargain territory; values &gt; 70 indicate overbought risk.</li>
+            <li><b>Vol Z-Score</b>: How many standard deviations today's volume is above or below its 20-day average. Above +2.0&sigma; signals institutional accumulation or distribution.</li>
+        </ul>
+
+        <h3 style="color: #bc8cff; border-bottom: 1px solid #30363d; padding-bottom: 4px;">4. Application Tabs &amp; Features</h3>
+        <ul>
+            <li><b>📈 Screener &amp; Charts</b>: Real-time stock screener table and dual charting engines (Interactive TradingView or Classic Matplotlib).</li>
+            <li><b>🧠 Market Psychology</b>: Whole-market breadth analyzer, Advance/Decline ratio, and 0&ndash;100 Fear &amp; Greed index.</li>
+            <li><b>📰 Daily News</b>: Multi-channel crawler tracking national news portals (OnlineKhabar, Ekantipur, Setopati, Ratopati, Himalayan Times), cabinet decisions, and flood/infrastructure disaster bulletins.</li>
+            <li><b>⚙ Settings &amp; Sync</b>: Cloud database synchronization with GitHub, auto-updater engine, and automated background daemon.</li>
+        </ul>
+        """)
+        guide_lay.addWidget(guide_box)
+        self.tab_widget.addTab(guide_tab, "📖 User Guide")
+
         self.tab_widget.addTab(settings_tab, "⚙ Settings & Sync")
 
         # Status Bar
