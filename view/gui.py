@@ -796,13 +796,33 @@ class NepseScreenerMainWindow(QMainWindow):
             self.status_bar.showMessage("Screening active universe...")
 
         def on_ticker_done(symbol: str, res: dict):
+            updated = False
             for row in range(self.table.rowCount()):
                 item = self.table.item(row, 0)
                 if item and item.text() == symbol:
                     self._update_table_row(row, symbol, res)
+                    updated = True
                     break
-            if res.get("is_entry_signal"):
+
+            notes = res.get("confirmation_notes", "").upper()
+            is_buy = res.get("is_entry_signal") or "BUY" in notes
+            is_sell = any(k in notes for k in ["SELL", "PROFIT", "BREAKDOWN", "DISTRIBUTION"]) or res.get("is_exit_signal") or (res.get("rsi_14", 50.0) >= 70.0)
+
+            if not updated:
+                curr_f = self.current_filter.lower()
+                if "sell" in curr_f and is_sell:
+                    r = self.table.rowCount()
+                    self.table.insertRow(r)
+                    self._update_table_row(r, symbol, res)
+                elif "buy" in curr_f and is_buy:
+                    r = self.table.rowCount()
+                    self.table.insertRow(r)
+                    self._update_table_row(r, symbol, res)
+
+            if is_buy:
                 self.log_box.append(f"🟢 [ENTRY SETUP] {symbol}: {res.get('confirmation_notes')}")
+            elif is_sell:
+                self.log_box.append(f"🔴 [EXIT / SELL] {symbol}: {res.get('confirmation_notes')}")
 
         def on_progress(current: int, total: int):
             percent = int((current / max(total, 1)) * 100)
